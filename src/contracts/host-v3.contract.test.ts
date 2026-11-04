@@ -505,6 +505,12 @@ describe('v3 golden files', () => {
     expect(page.facts.map((f) => f.seq)).toEqual([...page.facts.map((f) => f.seq)].sort((a, b) => a - b));
     expect(page.facts.every((f) => f.assistantId === 'a_0000000000000001')).toBe(true);
     expect(ack.ackSeq).toBe(page.nextSeq);
+    const notifications = exact(assistantActivityPageSchema, await load('personal-agent-activity-notifications.json'));
+    const delivered = exact(assistantActivityAckSchema, await load('personal-agent-activity-notifications-ack.json'));
+    expect(notifications.facts).toHaveLength(1);
+    expect(delivered.ackSeq).toBe(notifications.nextSeq);
+    // Notification cursor delivery is NOT the person's Activity History "Mark seen".
+    expect(page.ackSeq).toBe(0);
   });
 
   it('assistants: routines — drafted in chat, approved by a person, owner on every row', async () => {

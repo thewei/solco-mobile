@@ -34,9 +34,11 @@ import {
 } from '@/features/host/attention';
 import { createAttentionDelivery } from '@/features/host/attention-delivery';
 import { automationNotice, type AutomationFrame } from '@/features/host/automation-notice';
+import { createAssistantActivityNoticePump } from '@/features/host/assistant-activity-notice';
+import { newRequestId } from '@/features/host/launch-model';
 import { keepAliveStatus } from '@/features/host/keep-alive-status';
 import { paneRoute, summarize } from '@/features/host/pane-model';
-import { useHostInstance, useTreeEvents, useTreeV3 } from '@/features/host/queries-v3';
+import { useBootstrapV3, useHostInstance, useTreeEvents, useTreeV3 } from '@/features/host/queries-v3';
 import { getForegroundService } from '@/lib/foreground-service-native';
 import { useHostV3 } from '@/lib/host-v3-provider';
 import { useConnectionHealth } from '@/features/host/use-connection-health';
@@ -52,6 +54,7 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 export function BackgroundBridge({ children }: PropsWithChildren) {
   const router = useRouter();
   const { client, connection } = useHostV3();
+  const hostBootstrap = useBootstrapV3();
   useConnectionHealth(); // network/app/request signals → the ConnectionManager (fastest route, dead sockets rebuilt)
   const { instance, bootstrap } = useHostInstance();
   const tree = useTreeV3(instance);
@@ -66,7 +69,9 @@ export function BackgroundBridge({ children }: PropsWithChildren) {
       trigger: { channelId: ATTENTION_CHANNEL },
     }).catch(() => undefined);
   }, []);
-  const live = useTreeEvents(instance, onAutomation);
+  const pollAssistantNotices = useRef<(() => void) | null>(null);
+  const onAssistantActivity = useCallback(() => pollAssistantNotices.current?.(), []);
+  const live = useTreeEvents(instance, onAutomation, onAssistantActivity);
   const clientRef = useRef(client);
   clientRef.current = client;
 
@@ -105,6 +110,45 @@ export function BackgroundBridge({ children }: PropsWithChildren) {
       ]).catch(() => undefined);
     })();
   }, []);
+
+  // Android already keeps this one events socket and JS alive when paired.
+  // Use its change hint plus a bounded fallback poll to hand committed Solco
+  // facts to the OS, even when the Activity screen is not open. No push
+  // provider and no second Agent runtime. Notice ACKs are device-scoped and
+  // independent of the person's Activity History "Mark seen" cursor.
+  const canNotifyAssistant = hostBootstrap.data?.capabilities.personalAgent === true
+    && hostBootstrap.data?.capabilities.personalAgentManage === true
+    && hostBootstrap.data?.capabilities.personalAgentActivityNotices === true;
+  useEffect(() => {
+    if (Platform.OS !== 'android' || !client || !canNotifyAssistant) return undefined;
+    let current = true;
+    const pump = createAssistantActivityNoticePump({
+      overview: () => client.personalAgentOverview(),
+      unread: (id) => client.assistantNotificationActivity(id),
+      mayNotify: async (id) => !(await client.assistantProactivity(id)).quietNow,
+      ack: (requestId, id, seq) => client.ackAssistantNotification(requestId, id, seq),
+      nextRequestId: newRequestId,
+      isCurrent: () => current,
+      schedule: async ({ identifier, title, body, data }) => {
+        const permission = await Notifications.getPermissionsAsync();
+        if (!permission.granted || !current) throw new Error('Assistant Activity notifications are unavailable');
+        await Notifications.scheduleNotificationAsync({
+          identifier,
+          content: { title, body, data },
+          trigger: { channelId: ATTENTION_CHANNEL },
+        });
+      },
+    });
+    const poll = () => { void pump.poll(); };
+    pollAssistantNotices.current = poll;
+    poll();
+    const timer = setInterval(poll, 30_000);
+    return () => {
+      current = false;
+      pollAssistantNotices.current = null;
+      clearInterval(timer);
+    };
+  }, [client, canNotifyAssistant]);
 
   // The ongoing notification is the agent status line (Needs you / Working / Idle), re-posted as the tree moves.
   const summary = useMemo(() => (tree.data ? summarize(tree.data.workspaces) : null), [tree.data]);

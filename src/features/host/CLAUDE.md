@@ -32,3 +32,4 @@ Rule: this layer owns server state and transport orchestration only; screens nev
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 activity-model.ts: Assistant Activity 分页重连去重/游标单向推进（纯函数及 Vitest）；事实源仅 Host，屏幕不自行生成。
+- `assistant-activity-notice.ts`（2026-11-05）：Android 本地 Activity 汇总通知，独立 `device:<ID>:notifications` ACK；设备身份由 Host 派生，通知正文不含任务/提示词/助理姓名，点击 Activity History；通知 OS 调度失败不得 ACK、ACK 超时同一进程复用 requestId；尊重 Mac `proactivity.quietNow`。`background-bridge` 复用唯一事件 socket + 30 秒兜底，`queries-v3.useAssistantActivityHint` 驱动打开的 Activity 页面快速增量读，不复制后台服务。

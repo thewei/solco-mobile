@@ -3,7 +3,7 @@
 // [POS]: A Solco-authored facts timeline, never a fabricated OMP conversation or background push
 // [PROTOCOL]: Update this header on changes, then check CLAUDE.md
 import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScrollView, Text, XStack, YStack } from 'tamagui';
 
@@ -15,7 +15,7 @@ import { newRequestId } from '@/features/host/launch-model';
 import { mergeActivityFacts, nextActivityCursor } from '@/features/host/activity-model';
 import { createRequestIds, personalAgentMessage } from '@/features/host/personal-agent-model';
 import { factLabel, factTone } from '@/features/host/progress-model';
-import { useAssistantDetail, useBootstrapV3 } from '@/features/host/queries-v3';
+import { useAssistantActivityHint, useAssistantDetail, useBootstrapV3 } from '@/features/host/queries-v3';
 import { useHostV3 } from '@/lib/host-v3-provider';
 import { colors, spacing } from '@/theme/tokens';
 
@@ -29,6 +29,7 @@ export default function AssistantActivityScreen() {
   const served = boot.data?.capabilities.personalAgent === true;
   const manage = boot.data?.capabilities.personalAgentManage === true;
   const detail = useAssistantDetail(id ?? '', served);
+  const activityHint = useAssistantActivityHint();
   const [facts, setFacts] = useState<Fact[]>([]);
   const [ackSeq, setAckSeq] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -93,6 +94,12 @@ export default function AssistantActivityScreen() {
       epoch.current += 1;
     };
   }, [load]));
+
+  // The existing Host events socket supplies only a change hint. Fetch
+  // durable Activity records; network gaps still recover on focus/poll.
+  useEffect(() => {
+    if (activityHint > 0) void load(false);
+  }, [activityHint, load]);
 
   const markRead = () => {
     if (!client || !id || acknowledging || after.current <= ackSeq) return;

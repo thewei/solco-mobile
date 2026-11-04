@@ -156,13 +156,15 @@ export function usePeekV3(instance: string | null, paneId: string, enabled: bool
  * Keeps one events socket open for the instance and refetches the tree on every change signal.
  * Reconnects with a capped exponential backoff; returns whether the stream is currently live.
  */
-export function useTreeEvents(instance: string | null, onAutomation?: (frame: AutomationFrame) => void): boolean {
+export function useTreeEvents(instance: string | null, onAutomation?: (frame: AutomationFrame) => void, onAssistantActivity?: () => void): boolean {
   const { client, signal } = useHostV3();
   const queryClient = useQueryClient();
   const [live, setLive] = useState(false);
   const attempt = useRef(0);
   const onAutomationRef = useRef(onAutomation);
   onAutomationRef.current = onAutomation;
+  const onAssistantActivityRef = useRef(onAssistantActivity);
+  onAssistantActivityRef.current = onAssistantActivity;
 
   useEffect(() => {
     if (!client || !instance) return undefined;
@@ -198,7 +200,12 @@ export function useTreeEvents(instance: string | null, onAutomation?: (frame: Au
             return;
           }
           if (message.t === 'personal-agent.changed') {
-            void queryClient.invalidateQueries({ queryKey: ['v3', 'personal-agent'] }); // counts only: an open Assistants screen re-reads the Mac's truth
+            // A committed Activity fact can change without moving Task/Goal
+            // counters. The Host sends only a hint; the client reads facts
+            // from its durable cursor and never infers delivery from a frame.
+            void queryClient.invalidateQueries({ queryKey: ['v3', 'personal-agent'] });
+            queryClient.setQueryData<number>(['v3', 'assistant-activity-hint'], (n) => (n ?? 0) + 1);
+            onAssistantActivityRef.current?.();
             return;
           }
           void queryClient.invalidateQueries({ queryKey: ['v3', 'tree', instance] });
@@ -608,6 +615,19 @@ export function useAssistantRoutines(id: string, enabled: boolean) {
   });
   useForgetOnUnauthorized(query.error);
   return query;
+}
+
+/** Notification-only hint for an open Activity history screen. The
+ * Activity page still replays by a persisted Host cursor on reconnect.
+ */
+export function useAssistantActivityHint(): number {
+  const query = useQuery({
+    queryKey: ['v3', 'assistant-activity-hint'],
+    queryFn: () => 0,
+    initialData: 0,
+    staleTime: Infinity,
+  });
+  return query.data;
 }
 
 /** The Assistant's ledger: what the Mac's core says happened to its Goals, newest first. */

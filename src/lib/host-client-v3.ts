@@ -516,6 +516,11 @@ export interface HostClientV3 {
   assistantActivity(id: string, after?: number, limit?: number): Promise<AssistantActivityPage>;
   /** ACK only after handling the Activity items. A disconnect may retry the same requestId. */
   ackAssistantActivity(requestId: string, id: string, seq: number): Promise<number>;
+  /** Separate durable notification cursor, scoped to this authenticated device.
+   * This NEVER updates the Activity History screen's manually seen cursor.
+   */
+  assistantNotificationActivity(id: string, limit?: number): Promise<AssistantActivityPage>;
+  ackAssistantNotification(requestId: string, id: string, seq: number): Promise<number>;
   /** The Assistant's routines: drafts waiting for a person's approval and the enabled ones. */
   assistantRoutines(id: string): Promise<Routine[]>;
   assistantMemory(id: string): Promise<MemoryReview>;
@@ -870,6 +875,16 @@ export function createHostClientV3(transport: PinnedTransport | null, connection
     ackAssistantActivity: async (requestId, id, seq) =>
       (await slowPostJson(
         `/personal-agent/assistants/${q(id)}/activity/ack`,
+        JSON.stringify({ requestId, seq }),
+        assistantActivityAckSchema,
+        'assistants',
+        AUTOMATION_TIMEOUT_MS,
+      )).ackSeq,
+    assistantNotificationActivity: (id, limit = 100) =>
+      get(`/personal-agent/assistants/${q(id)}/activity/notifications?limit=${limit}`, assistantActivityPageSchema, 'assistants'),
+    ackAssistantNotification: async (requestId, id, seq) =>
+      (await slowPostJson(
+        `/personal-agent/assistants/${q(id)}/activity/notifications/ack`,
         JSON.stringify({ requestId, seq }),
         assistantActivityAckSchema,
         'assistants',
