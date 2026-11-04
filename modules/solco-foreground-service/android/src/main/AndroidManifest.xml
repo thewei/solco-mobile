@@ -1,0 +1,21 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+  <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
+  <application>
+    <!--
+      A "specialUse" foreground service: the only type without a per-day runtime ceiling on
+      Android 15 (dataSync is capped at 6 h), and this app is sideloaded so Play policy on
+      specialUse never applies. The library manifest merges into the app at build time, so a
+      prebuild regeneration re-merges it automatically.
+    -->
+    <service
+      android:name=".KeepAliveService"
+      android:exported="false"
+      android:foregroundServiceType="specialUse">
+      <property
+        android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+        android:value="Keeps the pinned connection to the user's own Mac alive while the app is backgrounded"/>
+    </service>
+  </application>
+</manifest>

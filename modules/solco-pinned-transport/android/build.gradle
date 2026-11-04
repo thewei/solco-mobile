@@ -1,0 +1,24 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.whstudio.solco'
+version = '0.1.0'
+
+android {
+  namespace "com.whstudio.solco.pinnedtransport"
+  defaultConfig {
+    versionCode 1
+    versionName '0.1.0'
+  }
+}
+
+dependencies {
+  // Same line React Native ships, so Gradle resolves one OkHttp.
+  implementation "com.squareup.okhttp3:okhttp:4.9.2"
+
+  testImplementation "junit:junit:4.13.2"
+  testImplementation "com.squareup.okhttp3:mockwebserver:4.9.2"
+  testImplementation "com.squareup.okhttp3:okhttp-tls:4.9.2"
+}

@@ -1,0 +1,32 @@
+# prox 本地域名配置 — solco mobile web（PWA 验证拓扑）
+#
+# 拓扑（模拟 web-pwa-architecture.md §4 的 W4 目标形态，经 Caddy TLS）：
+#   https://solco.dev.local → serve-web :8090（静态 dist/ + /api 同源反代 → Mac Host :8757）
+# 同源 ⇒ CORS 归零 ⇒ manifest 可安装（PWA）；WS 走 wss://<host>/api/v1/events。
+#
+# 传输选择（见 macos-local-dev-routing skill 的显式传输纪律）：
+# 本域名走 /etc/hosts 受管区块，不配 dnsmasq selector——.dev.local 后缀在
+# 系统代理 bypass 默认名单（*.local）内，hosts 路径先于 resolver 注册，
+# 不依赖 dnsmasq 常驻。（曾用 *.test 域名 + dnsmasq selector，因 mDNSResponder
+# 对新装 resolver 文件应答 No Such Record 而弃用，记录见
+# docs/web-pwa-local-domain.md §6。）
+
+services:
+  - domain: "solco.dev.local"
+    port: 8090
+    headers:
+      up:
+        X-Forwarded-Host: "{host}"
+        X-Real-IP: "{remote}"
+
+tasks:
+  # 静态导出伺服（需先 pnpm export:web 产出 dist/）。
+  - name: web
+    type: daemon
+    command: node scripts/serve-web.mjs
+    port: 8090
+    default: true
+  # 重新导出（expo 静态导出，首跑约 7 分钟）。
+  - name: export
+    type: once
+    command: pnpm export:web
