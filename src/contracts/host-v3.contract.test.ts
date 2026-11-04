@@ -528,7 +528,7 @@ describe('v3 golden files', () => {
     const page = exact(assistantDetailSchema, await load('personal-agent-assistant.json'));
     expect(page.assistant.id).toBe('a_0000000000000001');
     expect(page.coordinator).toMatchObject({ state: 'ready', herdrSession: 'default', paneId: 'w1:p1' });
-    expect(page.agents.map((a) => a.id)).toEqual(['pi', 'claude']);
+    expect(page.agents.map((a) => a.id)).toEqual(['omp']);
     expect(page.goals[0]?.commitments[0]).toMatchObject({ kind: 'pr_watch', state: 'active' });
     expect(page.tasks[0]?.runs[0]).toMatchObject({ herdrSession: 'default', paneId: 'w1:p1' });
     expect(page.approvals[0]?.actionHash).toHaveLength(64);
@@ -543,7 +543,7 @@ describe('v3 golden files', () => {
 
   it('assistants: starting the Coordinator', async () => {
     const request = JSON.parse(JSON.stringify(await load('personal-agent-coordinator-start-request.json'))) as { requestId: string; agent: string };
-    expect(request).toEqual({ requestId: '4d9a1f0e-6c1b-4e52-9a58-1b6f3a2c7d10', agent: 'pi' });
+    expect(request).toEqual({ requestId: '4d9a1f0e-6c1b-4e52-9a58-1b6f3a2c7d10', agent: 'omp' });
     const started = exact(assistantCoordinatorReceiptSchema, await load('personal-agent-coordinator-start.json'));
     expect(started.coordinator).toMatchObject({ state: 'starting', assistantId: 'a_0000000000000001' });
   });
