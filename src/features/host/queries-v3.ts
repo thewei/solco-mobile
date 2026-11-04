@@ -452,6 +452,23 @@ export function useAssistantDetail(id: string, enabled: boolean) {
   return query;
 }
 
+/** The same Coordinator report outbox the desktop shows. A change hint
+ * triggers a fresh read; the phone never guesses if OMP wrote a reply.
+ */
+export function useAssistantCoordinatorReport(assistantId: string, enabled: boolean) {
+  const { client } = useHostV3();
+  const query = useQuery({
+    queryKey: ['v3', 'personal-agent', 'report', assistantId],
+    queryFn: () => client!.assistantCoordinatorReport(assistantId),
+    enabled: client !== null && enabled && assistantId !== '',
+    staleTime: 0,
+    gcTime: 30_000,
+    retry: false,
+  });
+  useForgetOnUnauthorized(query.error);
+  return query;
+}
+
 /** Pending approvals across every Assistant — the Needs You inbox. */
 export function useAssistantInbox(assistantId: string, enabled: boolean) {
   const { client } = useHostV3();

@@ -13,3 +13,4 @@ Rule: camelCase wire fields are validated once here; opaque IDs and provider-neu
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 - `assistantActivityPageSchema` / `assistantActivityAckSchema`（2026-11-04）：Host cursor Activity，facts 按 seq 升序，GET 不 ACK；ACK/consumer 属于设备身份，手机只传 requestId+seq；golden `personal-agent-activity{,-ack}.json`。
 - 2026-11-05 Activity 通知：`assistantOverviewSchema.activitySeq?`（仅事实序号提示，兼容旧 Host）和可选 capability `personalAgentActivityNotices`；手机 `assistantNotificationActivity` / `ackAssistantNotification` 走 `/activity/notifications`，与手工 `ackAssistantActivity` 相互独立。Goldens `personal-agent-activity-notifications{,-ack}.json`。
+- 2026-11-05 主动自然语言报告：`coordinatorReportSchema` / `coordinatorReportResponseSchema`；Host 只有 `assistant report probe` 成功才给 capability `personalAgentNarrativeReports`；`report/resolve` 需要通过真实 ScopeManage 与显式 confirmed/throughSeq/requestId；金样 `personal-agent-coordinator-report{,-resolved}.json`。

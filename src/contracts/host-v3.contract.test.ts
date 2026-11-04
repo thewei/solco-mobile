@@ -42,6 +42,7 @@ import {
   factsResponseSchema,
   assistantActivityPageSchema,
   assistantActivityAckSchema,
+  coordinatorReportResponseSchema,
   factKinds,
   routinesResponseSchema,
   memoryReviewResponseSchema,
@@ -511,6 +512,15 @@ describe('v3 golden files', () => {
     expect(delivered.ackSeq).toBe(notifications.nextSeq);
     // Notification cursor delivery is NOT the person's Activity History "Mark seen".
     expect(page.ackSeq).toBe(0);
+  });
+
+  it('assistants: Coordinator narrative report is a Herdr submission status, not an OMP reply', async () => {
+    const waiting = exact(coordinatorReportResponseSchema, await load('personal-agent-coordinator-report.json')).report;
+    const resolved = exact(coordinatorReportResponseSchema, await load('personal-agent-coordinator-report-resolved.json')).report;
+    expect(waiting).toMatchObject({ state: 'uncertain', throughSeq: 9, submittedSeq: 4 });
+    expect(resolved).toMatchObject({ state: 'submitted', throughSeq: 9, submittedSeq: 9 });
+    expect(resolved.assistantId).toBe(waiting.assistantId);
+    expect(exact(bootstrapV3Schema, await load('bootstrap-personal-agent.json')).capabilities.personalAgentNarrativeReports).toBe(true);
   });
 
   it('assistants: routines — drafted in chat, approved by a person, owner on every row', async () => {

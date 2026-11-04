@@ -32,3 +32,4 @@ Rule: screens compose providers and consume Host queries/state hooks; transport,
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 - `assistants/activity/[id].tsx` — 2026-11-04 Assistant Activity：按设备 ACK 序号增量重放的 Solco 事实时间线，分页/定期刷新/显式“Mark shown updates as seen”；只处理 Host 业务 API、不会插入 OMP 聊天转录或自动批准任务；消费者 ID 仅 Host 派生。
 - 2026-11-05 `background-bridge.tsx`: `personalAgentActivityNotices` 开启后 Android 后台摘要通知；静默时间从 Host 读取、内容不泄露、OS 调度成功才 ACK 独立通知游标；不是离线 FCM/APNs，关闭进程不保证即时到达。
+- 2026-11-05 `assistants/activity/[id].tsx`：可在移动端检查 Coordinator 自然语言进度报告的 `uncertain` 投递状态，二次确认 `skip/retry` 且以 requestId+throughSeq 围栏；`submitted` 仅代表 Herdr 接受 OMP 汇报请求，不表示模型输出已经成功。

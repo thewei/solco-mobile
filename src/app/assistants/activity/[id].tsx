@@ -5,6 +5,7 @@
 import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Alert } from 'react-native';
 import { ScrollView, Text, XStack, YStack } from 'tamagui';
 
 import { PillButton } from '@/components/pill-button';
@@ -15,7 +16,7 @@ import { newRequestId } from '@/features/host/launch-model';
 import { mergeActivityFacts, nextActivityCursor } from '@/features/host/activity-model';
 import { createRequestIds, personalAgentMessage } from '@/features/host/personal-agent-model';
 import { factLabel, factTone } from '@/features/host/progress-model';
-import { useAssistantActivityHint, useAssistantDetail, useBootstrapV3 } from '@/features/host/queries-v3';
+import { useAssistantActivityHint, useAssistantCoordinatorReport, useAssistantDetail, useBootstrapV3 } from '@/features/host/queries-v3';
 import { useHostV3 } from '@/lib/host-v3-provider';
 import { colors, spacing } from '@/theme/tokens';
 
@@ -29,6 +30,9 @@ export default function AssistantActivityScreen() {
   const served = boot.data?.capabilities.personalAgent === true;
   const manage = boot.data?.capabilities.personalAgentManage === true;
   const detail = useAssistantDetail(id ?? '', served);
+  const reportEnabled = served && boot.data?.capabilities.personalAgentNarrativeReports === true;
+  const report = useAssistantCoordinatorReport(id ?? '', reportEnabled);
+  const refetchReport = report.refetch;
   const activityHint = useAssistantActivityHint();
   const [facts, setFacts] = useState<Fact[]>([]);
   const [ackSeq, setAckSeq] = useState(0);
@@ -44,6 +48,8 @@ export default function AssistantActivityScreen() {
   // Reuse one requestId after an uncertain transport failure: the Host may
   // have committed the ACK even though the response never reached this phone.
   const ids = useRef(createRequestIds(newRequestId)).current;
+  const reportIds = useRef(createRequestIds(newRequestId)).current;
+  const [resolvingReport, setResolvingReport] = useState(false);
 
   const load = useCallback(async (reset = false) => {
     if (!client || !id) return;
@@ -88,18 +94,57 @@ export default function AssistantActivityScreen() {
     void load(true);
     // Periodically fetch newly committed facts while this screen is mounted;
     // refreshes do not send an ACK or wake an OMP Agent.
-    const timer = setInterval(() => void load(false), 10_000);
+    if (reportEnabled) void refetchReport();
+    const timer = setInterval(() => {
+      void load(false);
+      if (reportEnabled) void refetchReport();
+    }, 10_000);
     return () => {
       clearInterval(timer);
       epoch.current += 1;
     };
-  }, [load]));
+  }, [load, reportEnabled, refetchReport]));
 
   // The existing Host events socket supplies only a change hint. Fetch
   // durable Activity records; network gaps still recover on focus/poll.
   useEffect(() => {
     if (activityHint > 0) void load(false);
   }, [activityHint, load]);
+
+  const reviewReport = (action: 'skip' | 'retry') => {
+    const pending = report.data;
+    if (!client || !id || !manage || resolvingReport || pending?.state !== 'uncertain' || pending.throughSeq <= 0) return;
+    const target = pending.throughSeq;
+    const owner = id;
+    Alert.alert(
+      action === 'skip' ? 'Report already delivered?' : 'Send the report again?',
+      action === 'skip'
+        ? 'Check the original OMP Chat first. Marking this handled discards this pending report; all activity facts remain available.'
+        : 'Herdr may have already delivered the report to OMP. Sending it again can produce a duplicate. Check the original conversation before confirming.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: action === 'skip' ? 'Mark handled' : 'Retry delivery', style: action === 'retry' ? 'destructive' : 'default', onPress: () => {
+          const token = epoch.current;
+          const requestId = reportIds.begin(owner + ':' + target + ':' + action);
+          setResolvingReport(true);
+          void client.resolveAssistantCoordinatorReport(requestId, owner, target, action)
+            .then(() => {
+              if (token !== epoch.current) return;
+              reportIds.settle(null);
+              setError('');
+              void report.refetch();
+            })
+            .catch((err) => {
+              if (token !== epoch.current) return;
+              reportIds.settle(err);
+              setError(personalAgentMessage(err));
+              void report.refetch();
+            })
+            .finally(() => { if (token === epoch.current) setResolvingReport(false); });
+        } },
+      ],
+    );
+  };
 
   const markRead = () => {
     if (!client || !id || acknowledging || after.current <= ackSeq) return;
@@ -130,6 +175,25 @@ export default function AssistantActivityScreen() {
           contentContainerStyle={{ paddingHorizontal: spacing.screen, paddingTop: 12, paddingBottom: 36, gap: 10, flexGrow: 1 }}
           refreshControl={pullRefresh(loading, () => void load(false))}>
           <SectionLabel inset={false}>Solco activity</SectionLabel>
+          {report.data?.state === 'uncertain' ? (
+            <Card padded gap={8}>
+              <Text color={colors.danger} fontSize={14} fontWeight="700">Coordinator report needs review</Text>
+              <Text color={colors.textMuted} fontSize={12.5} lineHeight={18}>
+                An automatic progress request may already have reached OMP. Open the original Chat to check it; Solco will not retry without your explicit decision.
+              </Text>
+              <Text color={colors.textSubtle} fontSize={12}>Activity through fact #{report.data.throughSeq}. This is delivery status, not a completed reply.</Text>
+              {manage ? (
+                <XStack gap={8} flexWrap="wrap">
+                  <PillButton compact tone="soft" label="Already delivered · Skip" disabled={resolvingReport} onPress={() => reviewReport('skip')} />
+                  <PillButton compact tone="soft" label="Send again…" disabled={resolvingReport} onPress={() => reviewReport('retry')} />
+                </XStack>
+              ) : <Text color={colors.textMuted} fontSize={12}>This device has read-only access and cannot resolve delivery.</Text>}
+            </Card>
+          ) : report.data?.state === 'queued' || report.data?.state === 'claimed' ? (
+            <Card padded>
+              <Text color={colors.textMuted} fontSize={12}>A progress update is {report.data.state === 'claimed' ? 'being submitted' : 'awaiting submission'} to the original OMP Coordinator; its reply is not yet confirmed.</Text>
+            </Card>
+          ) : null}
           <Text color={colors.textMuted} fontSize={13} lineHeight={19}>
             These are committed task and goal updates from Solco, not replies written by the Coordinator. Updates survive reconnecting; the device marks them seen only when you choose.
           </Text>

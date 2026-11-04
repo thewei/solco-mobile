@@ -60,6 +60,8 @@ import {
   factsResponseSchema,
   assistantActivityPageSchema,
   assistantActivityAckSchema,
+  coordinatorReportResponseSchema,
+  type CoordinatorReport,
   type AssistantActivityPage,
   routinesResponseSchema,
   memoryReviewResponseSchema,
@@ -521,6 +523,10 @@ export interface HostClientV3 {
    */
   assistantNotificationActivity(id: string, limit?: number): Promise<AssistantActivityPage>;
   ackAssistantNotification(requestId: string, id: string, seq: number): Promise<number>;
+  /** Delivery status for an opt-in narrative report in the original OMP Chat. */
+  assistantCoordinatorReport(id: string): Promise<CoordinatorReport>;
+  /** Explicit owner decision for one uncertain delivery; retry can duplicate. */
+  resolveAssistantCoordinatorReport(requestId: string, id: string, throughSeq: number, action: 'skip' | 'retry'): Promise<CoordinatorReport>;
   /** The Assistant's routines: drafts waiting for a person's approval and the enabled ones. */
   assistantRoutines(id: string): Promise<Routine[]>;
   assistantMemory(id: string): Promise<MemoryReview>;
@@ -890,6 +896,16 @@ export function createHostClientV3(transport: PinnedTransport | null, connection
         'assistants',
         AUTOMATION_TIMEOUT_MS,
       )).ackSeq,
+    assistantCoordinatorReport: async (id) =>
+      (await get(`/personal-agent/assistants/${q(id)}/report`, coordinatorReportResponseSchema, 'assistants')).report,
+    resolveAssistantCoordinatorReport: async (requestId, id, throughSeq, action) =>
+      (await slowPostJson(
+        `/personal-agent/assistants/${q(id)}/report/resolve`,
+        JSON.stringify({ requestId, throughSeq, action, confirmed: true }),
+        coordinatorReportResponseSchema,
+        'assistants',
+        AUTOMATION_TIMEOUT_MS,
+      )).report,
     assistantRoutines: async (id) => (await get(`/personal-agent/assistants/${q(id)}/routines`, routinesResponseSchema, 'assistants')).routines,
     assistantMemory: async (id) => (await get(`/personal-agent/assistants/${q(id)}/memory`, memoryReviewResponseSchema, 'assistants')).review,
     memoryHistory: async (memoryId) => (await get(`/personal-agent/memory/${q(memoryId)}/history`, memoryHistoryResponseSchema, 'assistants')).versions,
