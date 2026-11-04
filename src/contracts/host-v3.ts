@@ -1,5 +1,5 @@
 // [INPUT]: Solco Go Host `/api/v3` wire payloads (internal/remotehost): pairing, bootstrap, tree,
-//          peek, the events socket and the terminal stream's text frames.
+//          peek, the events socket, the terminal stream's text frames and SC-06 Chat full/delta wire frames.
 // [OUTPUT]: The only Zod-validated v3 DTOs plus the wire limits the Host enforces.
 // [POS]: Mobile transport contract boundary for the Go Host. Screens never see Herdr protocol types.
 // [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -287,7 +287,7 @@ export const chatResponseSchema = chatStateSchema.extend({
 });
 export type ChatResponse = z.infer<typeof chatResponseSchema>;
 
-/** /panes/{paneId}/chat/stream text frame: the whole state, only when it changed. */
+/** /panes/{paneId}/chat/stream authoritative whole-state frame. seq is absent on older Hosts. */
 export const chatFrameSchema = z.object({
   t: z.literal('chat'),
   paneId: z.string().min(1),
@@ -295,8 +295,21 @@ export const chatFrameSchema = z.object({
   interaction: chatInteractionSchema.optional(),
   queued: chatQueuedSchema.optional(),
   state: chatStateSchema,
+  seq: z.number().int().positive().optional(),
 });
 export type ChatFrame = z.infer<typeof chatFrameSchema>;
+
+/** Bounded OMP suffix update; a gap or invalid baseline requires a full snapshot. */
+export const chatDeltaFrameSchema = z.object({
+  t: z.literal('chat_delta'),
+  paneId: z.string().min(1),
+  baseSeq: z.number().int().positive(),
+  seq: z.number().int().positive(),
+  start: z.number().int().nonnegative(),
+  turns: z.array(chatTurnSchema).max(3),
+});
+export type ChatDeltaFrame = z.infer<typeof chatDeltaFrameSchema>;
+export const chatWireFrameSchema = z.discriminatedUnion('t', [chatFrameSchema, chatDeltaFrameSchema]);
 
 /** POST /panes/{paneId}/chat/send — `interrupt` cuts a running turn in (Esc first). */
 export const chatSendRequestSchema = z.object({

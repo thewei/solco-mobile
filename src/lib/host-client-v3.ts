@@ -1,7 +1,7 @@
 // [INPUT]: a PinnedTransport (route=lan) or one HostConnectionV3 whose `relay` names the route
 //          (route=relay: plain JS fetch/WebSocket over the relay; transport may be null).
 // [OUTPUT]: pairWithHost, createHostClientV3 → { bootstrap, tree, peek, openEvents, openTerminal },
-//           launch (start a new session), chat / chatCatalog / openChat / sendChat / stopChat / answerChat (Chat + Herdr-gated send and card answers),
+//           launch (start a new session), chat / chatCatalog / openChat / sendChat / stopChat / answerChat (Chat + Herdr-gated send and card answers; SC-06 Host chat_delta exact seq merge, missing seq triggers a single snapshot resync),
 //           quota (the Mac's agent-quota page), sessions (the Mac's session catalog, read-only), HostV3Error (kind: unauthorized | pin | http | protocol | transport).
 // [POS]: The only caller of the Go Host `/api/v3`. Every response is Zod-validated at this edge;
 //        screens and state see typed DTOs and one error family. No Herdr types leak through.
@@ -14,6 +14,7 @@
 // callers can drop the connection; terminal input is encoded by terminal-protocol-v3, which
 // refuses what the Host would refuse.
 import { z } from 'zod';
+import { applyHostChatDelta } from '@/features/chat-web/host-delta';
 
 import {
   V3_API_PREFIX,
@@ -29,7 +30,7 @@ import {
   attachRequestSchema,
   chatCatalogSchema,
   chatFilesSchema,
-  chatFrameSchema,
+  chatWireFrameSchema,
   chatResponseSchema,
   subagentViewSchema,
   bootstrapV3Schema,
@@ -682,13 +683,31 @@ export function createHostClientV3(transport: PinnedTransport | null, connection
     chat: (instance, paneId) => get(`/panes/${q(paneId)}/chat?instance=${q(instance)}`, chatResponseSchema, 'chat'),
 
     openChat(instance, paneId, handlers) {
+      let last: ChatFrame | null = null;
+      let awaitingSnapshot = false;
+      const snapshot = () => {
+        if (!awaitingSnapshot) {
+          awaitingSnapshot = true;
+          socket.sendText('{"t":"snapshot"}');
+        }
+      };
       const socket = openSocket(`${wsBase}${V3_API_PREFIX}/panes/${q(paneId)}/chat/stream?instance=${q(instance)}`, {
         onText(text) {
           try {
-            const parsed = chatFrameSchema.safeParse(JSON.parse(text));
-            if (parsed.success) handlers.onFrame(parsed.data);
+            const parsed = chatWireFrameSchema.safeParse(JSON.parse(text));
+            if (!parsed.success) { snapshot(); return; }
+            if (parsed.data.t === 'chat') {
+              last = parsed.data;
+              awaitingSnapshot = false;
+            } else {
+              if (awaitingSnapshot) return;
+              last = applyHostChatDelta(last, parsed.data);
+              if (!last) { snapshot(); return; }
+            }
+            handlers.onFrame(last);
           } catch {
-            // a malformed frame is dropped; the next frame carries the whole state anyway
+            // A corrupt/lost wire frame cannot be replayed as a suffix.
+            snapshot();
           }
         },
         onClose: (event) =>

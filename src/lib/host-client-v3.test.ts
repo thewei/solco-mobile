@@ -337,6 +337,37 @@ describe('chat', () => {
   });
 });
 
+describe('OMP Chat delta stream recovery', () => {
+  it('merges exact suffixes, asks one snapshot after a gap and resumes on a full frame', () => {
+    const { transport, sockets } = fakeTransport(() => ok('{}'));
+    const frames: { seq?: number; state: { turns: { narration?: string }[] } }[] = [];
+    createHostClientV3(transport, connection).openChat('default', 'w1:p1', {
+      onFrame: (frame) => frames.push(frame), onClose: () => {},
+    });
+    const ws = sockets[0]!;
+    const full = { ...JSON.parse(fixture('chat-frame.json')), seq: 1 };
+    ws.handlers.onText?.(JSON.stringify(full));
+    const baseTurns = full.state.turns as unknown[];
+    const good = {
+      t: 'chat_delta', paneId: 'w1:p1', baseSeq: 1, seq: 2,
+      start: Math.max(0, baseTurns.length - 3),
+      turns: [{ user: false, narration: 'streaming' }],
+    };
+    ws.handlers.onText?.(JSON.stringify(good));
+    expect(frames).toHaveLength(2);
+    expect(frames[1]?.seq).toBe(2);
+    expect(frames[1]?.state.turns.at(-1)?.narration).toBe('streaming');
+    ws.handlers.onText?.(JSON.stringify({ ...good, baseSeq: 4, seq: 5 }));
+    ws.handlers.onText?.(JSON.stringify({ ...good, baseSeq: 5, seq: 6 }));
+    expect(ws.sent).toEqual(['{"t":"snapshot"}']);
+    expect(frames).toHaveLength(2);
+    ws.handlers.onText?.(JSON.stringify({ ...full, seq: 7 }));
+    ws.handlers.onText?.(JSON.stringify({ ...good, baseSeq: 7, seq: 8 }));
+    expect(frames.at(-1)?.seq).toBe(8);
+    expect(ws.sent).toHaveLength(1);
+  });
+});
+
 describe('chat stream paging', () => {
   it('asks this socket for the previous page with the one message the Host reads', () => {
     const { transport, sockets } = fakeTransport(() => ok('{}'));

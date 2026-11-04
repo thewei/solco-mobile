@@ -90,6 +90,7 @@ import {
   chatAnswerRequestSchema,
   chatFilesSchema,
   chatFrameSchema,
+  chatDeltaFrameSchema,
   chatSendRequestSchema,
   chatResponseSchema,
   errorBodyV3Schema,
@@ -151,9 +152,13 @@ describe('v3 golden files', () => {
     expect(chat.turns[0]?.text).toBe('Fix the parser');
   });
 
-  it('chat stream frame carries the whole state', async () => {
+  it('chat stream full frame and bounded delta carry the Host wire sequence', async () => {
     const frame = exact(chatFrameSchema, await load('chat-frame.json'));
+    const delta = exact(chatDeltaFrameSchema, await load('chat-delta.json'));
     expect(frame.state.turns).toHaveLength(2);
+    expect(frame.seq).toBe(1);
+    expect(delta).toMatchObject({ t: 'chat_delta', baseSeq: 1, seq: 2, start: 1 });
+    expect(delta.turns).toEqual([{ user: false, narration: 'Hello live stream!' }]);
   });
 
   it('chat send: request, ack and a named refusal', async () => {
