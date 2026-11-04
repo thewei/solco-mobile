@@ -31,3 +31,4 @@ Members:
 Rule: this layer owns server state and transport orchestration only; screens never call fetch/WebSocket and no state is persisted as a second Host truth.
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+activity-model.ts: Assistant Activity 分页重连去重/游标单向推进（纯函数及 Vitest）；事实源仅 Host，屏幕不自行生成。

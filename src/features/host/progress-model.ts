@@ -20,11 +20,14 @@ const FACT_LABEL: Record<string, string> = {
   done: 'Done',
   stale: 'No progress',
   held: 'Held',
+  task_added: 'Task filed',
+  run_finished: 'Run settled',
+  pulse: 'Progress',
   routine: 'Routine',
   routine_done: 'Routine ran',
   routine_failed: 'Routine failed',
 };
-const FACT_TONE: Record<string, Tone> = { verified: 'ok', done: 'ok', blocked: 'bad', held: 'bad', stale: 'warn', ready: 'warn', verifying: 'work', delegated: 'work', routine_done: 'ok', routine_failed: 'bad' };
+const FACT_TONE: Record<string, Tone> = { verified: 'ok', done: 'ok', blocked: 'bad', held: 'bad', stale: 'warn', ready: 'warn', verifying: 'work', delegated: 'work', task_added: 'work', run_finished: 'work', pulse: 'work', routine_done: 'ok', routine_failed: 'bad' };
 
 export const factLabel = (f: Pick<Fact, 'kind'>): string => FACT_LABEL[f.kind] ?? f.kind;
 export const factTone = (f: Pick<Fact, 'kind'>): Tone => FACT_TONE[f.kind] ?? 'muted';

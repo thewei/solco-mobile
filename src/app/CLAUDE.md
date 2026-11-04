@@ -30,3 +30,4 @@ Members:
 Rule: screens compose providers and consume Host queries/state hooks; transport, WS, and machine scheduling never live here.
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+- `assistants/activity/[id].tsx` — 2026-11-04 Assistant Activity：按设备 ACK 序号增量重放的 Solco 事实时间线，分页/定期刷新/显式“Mark shown updates as seen”；只处理 Host 业务 API、不会插入 OMP 聊天转录或自动批准任务；消费者 ID 仅 Host 派生。

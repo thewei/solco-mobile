@@ -1184,7 +1184,7 @@ export const goalPlanSchema = z.object({
   updatedAt: z.number().int().nonnegative(),
 });
 export type GoalPlan = z.infer<typeof goalPlanSchema>;
-export const factKinds = ['accepted', 'planned', 'replanned', 'delegated', 'verifying', 'verified', 'blocked', 'ready', 'done', 'stale', 'held', 'routine', 'routine_done', 'routine_failed'] as const;
+export const factKinds = ['accepted', 'planned', 'replanned', 'delegated', 'verifying', 'verified', 'blocked', 'ready', 'done', 'stale', 'held', 'task_added', 'run_finished', 'pulse', 'routine', 'routine_done', 'routine_failed'] as const;
 export const factSchema = z.object({
   seq: z.number().int().positive(),
   id: z.string(),
@@ -1199,6 +1199,20 @@ export const factSchema = z.object({
 export type Fact = z.infer<typeof factSchema>;
 export const goalPlanResponseSchema = z.object({ schema: z.literal(1), plan: goalPlanSchema, facts: z.array(factSchema) });
 export const factsResponseSchema = z.object({ schema: z.literal(1), facts: z.array(factSchema) });
+
+// Assistant Activity is a durable, oldest-first system fact stream. A GET
+// never marks anything delivered. ACK is per authenticated Host device, not a
+// consumer key supplied by this client, and cannot claim OMP said the text.
+export const assistantActivityPageSchema = factsResponseSchema.extend({
+  nextSeq: z.number().int().nonnegative(),
+  ackSeq: z.number().int().nonnegative(),
+  hasMore: z.boolean(),
+});
+export type AssistantActivityPage = z.infer<typeof assistantActivityPageSchema>;
+export const assistantActivityAckSchema = z.object({
+  schema: z.literal(1),
+  ackSeq: z.number().int().nonnegative(),
+});
 
 // ---- Routines (`capabilities.personalAgentRoutines`, read-only): scheduled work an Assistant drafted ----
 // A routine is an automation with an owner. An Assistant only drafts; the enabling is a person's answer to an ordinary

@@ -334,6 +334,11 @@ export default function AssistantScreen() {
               {write.isError ? <Text color={colors.danger} fontSize={12.5} lineHeight={18}>{personalAgentMessage(write.error)}</Text> : null}
 
               {plans ? <FactsStrip assistantId={id ?? ''} served={plans} now={now} /> : null}
+              {served ? (
+                <XStack gap={8}>
+                  <PillButton label="Activity history" tone="soft" compact onPress={() => router.push({ pathname: '/assistants/activity/[id]', params: { id: data.assistant.id } })} />
+                </XStack>
+              ) : null}
 
               {pending.length + buckets.needsYou.length > 0 ? <SectionLabel inset={false}>Needs you</SectionLabel> : null}
               {pending.map((approval) => (

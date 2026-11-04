@@ -11,3 +11,4 @@ Members:
 Rule: camelCase wire fields are validated once here; opaque IDs and provider-neutral semantic items are the only screen-facing contract.
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+- `assistantActivityPageSchema` / `assistantActivityAckSchema`（2026-11-04）：Host cursor Activity，facts 按 seq 升序，GET 不 ACK；ACK/consumer 属于设备身份，手机只传 requestId+seq；golden `personal-agent-activity{,-ack}.json`。

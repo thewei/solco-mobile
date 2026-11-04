@@ -40,6 +40,8 @@ import {
   instructionsResponseSchema,
   goalPlanResponseSchema,
   factsResponseSchema,
+  assistantActivityPageSchema,
+  assistantActivityAckSchema,
   factKinds,
   routinesResponseSchema,
   memoryReviewResponseSchema,
@@ -494,6 +496,15 @@ describe('v3 golden files', () => {
     expect(feed.facts).toHaveLength(3);
     expect(feed.facts.every((f) => factKinds.includes(f.kind as (typeof factKinds)[number]))).toBe(true);
     expect(exact(bootstrapV3Schema, await load('bootstrap-personal-agent.json')).capabilities.personalAgentPlans).toBe(true);
+  });
+
+  it('assistants: Activity pages are oldest-first and only an explicit ACK advances a device cursor', async () => {
+    const page = exact(assistantActivityPageSchema, await load('personal-agent-activity.json'));
+    const ack = exact(assistantActivityAckSchema, await load('personal-agent-activity-ack.json'));
+    expect(page).toMatchObject({ ackSeq: 0, nextSeq: 4, hasMore: false });
+    expect(page.facts.map((f) => f.seq)).toEqual([...page.facts.map((f) => f.seq)].sort((a, b) => a - b));
+    expect(page.facts.every((f) => f.assistantId === 'a_0000000000000001')).toBe(true);
+    expect(ack.ackSeq).toBe(page.nextSeq);
   });
 
   it('assistants: routines — drafted in chat, approved by a person, owner on every row', async () => {

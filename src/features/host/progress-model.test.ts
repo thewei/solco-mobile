@@ -5,6 +5,9 @@ import { factLabel, factTone, milestoneLabel, milestoneTone, planLine, routineLa
 describe('progress-model', () => {
   it('words and tones for facts and milestones; unknown kinds stay readable', () => {
     expect(factLabel({ kind: 'ready' })).toBe('Needs you');
+    expect(factLabel({ kind: 'task_added' })).toBe('Task filed');
+    expect(factLabel({ kind: 'run_finished' })).toBe('Run settled');
+    expect(factLabel({ kind: 'pulse' })).toBe('Progress');
     expect(factTone({ kind: 'blocked' })).toBe('bad');
     expect(factTone({ kind: 'verified' })).toBe('ok');
     expect(factLabel({ kind: 'newkind' })).toBe('newkind');

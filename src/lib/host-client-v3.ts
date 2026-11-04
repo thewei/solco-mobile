@@ -58,6 +58,9 @@ import {
   instructionsResponseSchema,
   goalPlanResponseSchema,
   factsResponseSchema,
+  assistantActivityPageSchema,
+  assistantActivityAckSchema,
+  type AssistantActivityPage,
   routinesResponseSchema,
   memoryReviewResponseSchema,
   memoryHistoryResponseSchema,
@@ -509,6 +512,10 @@ export interface HostClientV3 {
   goalPlan(goalId: string): Promise<{ plan: GoalPlan; facts: Fact[] }>;
   /** The Assistant's ledger across its Goals, newest first. */
   assistantFacts(id: string, limit?: number): Promise<Fact[]>;
+  /** Oldest-first durable Solco progress messages. Start after the last ACK to replay after reconnect. */
+  assistantActivity(id: string, after?: number, limit?: number): Promise<AssistantActivityPage>;
+  /** ACK only after handling the Activity items. A disconnect may retry the same requestId. */
+  ackAssistantActivity(requestId: string, id: string, seq: number): Promise<number>;
   /** The Assistant's routines: drafts waiting for a person's approval and the enabled ones. */
   assistantRoutines(id: string): Promise<Routine[]>;
   assistantMemory(id: string): Promise<MemoryReview>;
@@ -858,6 +865,16 @@ export function createHostClientV3(transport: PinnedTransport | null, connection
       return { plan, facts };
     },
     assistantFacts: async (id, limit = 20) => (await get(`/personal-agent/assistants/${q(id)}/facts?limit=${limit}`, factsResponseSchema, 'assistants')).facts,
+    assistantActivity: (id, after = 0, limit = 50) =>
+      get(`/personal-agent/assistants/${q(id)}/activity?after=${after}&limit=${limit}`, assistantActivityPageSchema, 'assistants'),
+    ackAssistantActivity: async (requestId, id, seq) =>
+      (await slowPostJson(
+        `/personal-agent/assistants/${q(id)}/activity/ack`,
+        JSON.stringify({ requestId, seq }),
+        assistantActivityAckSchema,
+        'assistants',
+        AUTOMATION_TIMEOUT_MS,
+      )).ackSeq,
     assistantRoutines: async (id) => (await get(`/personal-agent/assistants/${q(id)}/routines`, routinesResponseSchema, 'assistants')).routines,
     assistantMemory: async (id) => (await get(`/personal-agent/assistants/${q(id)}/memory`, memoryReviewResponseSchema, 'assistants')).review,
     memoryHistory: async (memoryId) => (await get(`/personal-agent/memory/${q(memoryId)}/history`, memoryHistoryResponseSchema, 'assistants')).versions,
