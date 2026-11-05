@@ -44,7 +44,7 @@ export const bootstrapV3Schema = z.object({
   hostId: z.string(),
   hostName: z.string(),
   version: z.string(),
-  capabilities: z.object({ terminal: z.boolean(), chat: z.boolean(), launch: z.boolean().optional(), git: z.boolean().optional(), gitWrite: z.boolean().optional(), files: z.boolean().optional(), quota: z.boolean().optional(), automations: z.boolean().optional(), automationsManage: z.boolean().optional(), personalAgent: z.boolean().optional(), personalAgentManage: z.boolean().optional(), personalAgentApprove: z.boolean().optional(), personalAgentGroups: z.boolean().optional(), personalAgentPersona: z.boolean().optional(), personalAgentPlans: z.boolean().optional(), personalAgentRoutines: z.boolean().optional(), personalAgentMemory: z.boolean().optional(), personalAgentProactivity: z.boolean().optional(), personalAgentActivityNotices: z.boolean().optional(), personalAgentNarrativeReports: z.boolean().optional(), sessions: z.boolean().optional(), sessionContinue: z.boolean().optional(), sessionTrash: z.boolean().optional(), voice: z.boolean().optional(), attachments: z.boolean().optional(), queue: z.boolean().optional(), queueEdit: z.boolean().optional(), devices: z.boolean().optional(), remoteDesktop: z.boolean().optional(), p2p: z.boolean().optional() }),
+  capabilities: z.object({ terminal: z.boolean(), chat: z.boolean(), launch: z.boolean().optional(), git: z.boolean().optional(), gitWrite: z.boolean().optional(), files: z.boolean().optional(), quota: z.boolean().optional(), automations: z.boolean().optional(), automationsManage: z.boolean().optional(), personalAgent: z.boolean().optional(), personalAgentManage: z.boolean().optional(), personalAgentApprove: z.boolean().optional(), personalAgentGroups: z.boolean().optional(), personalAgentPersona: z.boolean().optional(), personalAgentPlans: z.boolean().optional(), personalAgentRoutines: z.boolean().optional(), personalAgentMemory: z.boolean().optional(), personalAgentProactivity: z.boolean().optional(), personalAgentActivityNotices: z.boolean().optional(), assistantSystemPush: z.boolean().optional(), personalAgentNarrativeReports: z.boolean().optional(), sessions: z.boolean().optional(), sessionContinue: z.boolean().optional(), sessionTrash: z.boolean().optional(), voice: z.boolean().optional(), attachments: z.boolean().optional(), queue: z.boolean().optional(), queueEdit: z.boolean().optional(), devices: z.boolean().optional(), remoteDesktop: z.boolean().optional(), p2p: z.boolean().optional() }),
   /** Herdr sessions of the Mac, plus (`capabilities.devices`) the Mac's saved machines as `kind: 'device'` entries with a status. */
   instances: z.array(z.object({ id: z.string().min(1), kind: z.literal('device').optional(), label: z.string().optional(), status: z.string().optional() })),
   /** What POST /launch accepts, `terminal` first; present only when `capabilities.launch`. */
@@ -1262,6 +1262,15 @@ export const coordinatorReportSchema = z.object({
 });
 export type CoordinatorReport = z.infer<typeof coordinatorReportSchema>;
 export const coordinatorReportResponseSchema = z.object({ schema: z.literal(1), report: coordinatorReportSchema });
+
+// Push tokens are NEVER returned by the Mac or included in its bootstrap.
+// Only the paired device's opt-in status is visible over ScopeView.
+export const systemPushStatusSchema = z.object({
+  schema: z.literal(1),
+  enabled: z.boolean(),
+  provider: z.literal('expo'),
+});
+export type SystemPushStatus = z.infer<typeof systemPushStatusSchema>;
 
 // ---- Routines (`capabilities.personalAgentRoutines`, read-only): scheduled work an Assistant drafted ----
 // A routine is an automation with an owner. An Assistant only drafts; the enabling is a person's answer to an ordinary

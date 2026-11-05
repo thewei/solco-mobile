@@ -31,3 +31,4 @@ Members:
 Rule: transport utilities expose typed Host contracts; no direct Herdr socket/CLI/provider-file access is allowed here.
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+- `expo-push-config.ts`（2026-11-05）：只读取 Expo SDK 暴露的公开 EAS Project UUID；不能从 APK/源码加载 FCM 服务账号私钥。`host-client-v3.ts` 增加 ScopeView 的 system push 状态与 ScopeManage 的 register/refresh/disable/test，走已有安全 transport（lan 指纹锁定、relay HTTPS、P2P），旧 Host 无能力时 UI 不展示。

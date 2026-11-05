@@ -44,6 +44,7 @@ import {
   assistantActivityAckSchema,
   coordinatorReportResponseSchema,
   coordinatorReportSchema,
+  systemPushStatusSchema,
   factKinds,
   routinesResponseSchema,
   memoryReviewResponseSchema,
@@ -518,6 +519,16 @@ describe('v3 golden files', () => {
     expect(delivered.ackSeq).toBe(notifications.nextSeq);
     // Notification cursor delivery is NOT the person's Activity History "Mark seen".
     expect(page.ackSeq).toBe(0);
+  });
+
+  it('assistants: system push is per-device opt-in and never returns Expo tokens', async () => {
+    const boot = exact(bootstrapV3Schema, await load('bootstrap-personal-agent.json'));
+    expect(boot.capabilities.assistantSystemPush).toBe(true);
+    const off = exact(systemPushStatusSchema, await load('personal-agent-system-push-disabled.json'));
+    const on = exact(systemPushStatusSchema, await load('personal-agent-system-push-enabled.json'));
+    expect(off).toEqual({ schema: 1, enabled: false, provider: 'expo' });
+    expect(on).toEqual({ schema: 1, enabled: true, provider: 'expo' });
+    expect(JSON.stringify([off,on])).not.toContain('PushToken');
   });
 
   it('assistants: Coordinator narrative report is a Herdr submission status, not an OMP reply', async () => {

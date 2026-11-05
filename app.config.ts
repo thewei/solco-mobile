@@ -1,4 +1,11 @@
+import { existsSync } from 'node:fs';
 import type { ExpoConfig } from 'expo/config';
+
+// Real Android system push is opt-in and requires the owner's EAS Project ID
+// plus FCM v1 credentials. No Firebase service-account secret belongs in the
+// app bundle or repo. A local google-services.json is used by native builds.
+const fcmConfig = process.env.SOLCO_GOOGLE_SERVICES_FILE;
+const projectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID;
 
 const config: ExpoConfig = {
   name: 'Solco',
@@ -6,6 +13,7 @@ const config: ExpoConfig = {
   // `solco` carries the Mac's pairing link (solco://pair?…).
   scheme: 'solco',
   version: '0.12.0',
+  ...(projectId ? { extra: { eas: { projectId } } } : {}),
   orientation: 'portrait',
   userInterfaceStyle: 'dark',
   icon: './assets/icon.png',
@@ -16,6 +24,7 @@ const config: ExpoConfig = {
   },
   android: {
     package: 'com.whstudio.solco.mobile',
+    ...(fcmConfig && existsSync(fcmConfig) ? { googleServicesFile: fcmConfig } : {}),
     edgeToEdgeEnabled: true,
     // Dictation records in the Chat WebView and the Mac transcribes it (capabilities.voice), so the app
     // asks for the microphone itself; expo-camera's own request stays off (recordAudioAndroid: false below).
@@ -38,8 +47,9 @@ const config: ExpoConfig = {
   plugins: [
     'expo-router',
     'expo-secure-store',
-    // Local notifications only: remote push would need FCM (absent on China vivo ROMs) or the
-    // vivo channel (requires a store listing) — both deferred; see implementation-roadmap M6.
+    // Local alerts always work with an active app process. Expo OS push is
+    // optional on FCM-enabled Android builds; on China vivo ROMs without
+    // Google Play Services it falls back to keep-alive/local notifications.
     'expo-notifications',
     // "Share to Solco": Android text/links only (iOS would need a share extension target; not offered).
     ['expo-share-intent', { disableIOS: true, androidIntentFilters: ['text/*'] }],

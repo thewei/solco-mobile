@@ -62,6 +62,8 @@ import {
   assistantActivityPageSchema,
   assistantActivityAckSchema,
   coordinatorReportResponseSchema,
+  systemPushStatusSchema,
+  type SystemPushStatus,
   type CoordinatorReport,
   type AssistantActivityPage,
   routinesResponseSchema,
@@ -390,6 +392,16 @@ export interface ChatHandlers {
 
 export interface HostClientV3 {
   bootstrap(): Promise<BootstrapV3>;
+  /** This paired phone's OS push opt-in status; no token is ever returned. */
+  systemPushStatus(): Promise<SystemPushStatus>;
+  /** Android Expo token registration (encrypted Host transport, ScopeManage). */
+  registerSystemPush(expoToken: string): Promise<SystemPushStatus>;
+  /** Refresh only an already opted-in token; never re-enables after Disable. */
+  refreshSystemPushToken(expoToken: string): Promise<SystemPushStatus>;
+  /** Opt out and delete this phone's push token from the Mac. */
+  disableSystemPush(): Promise<SystemPushStatus>;
+  /** Explicit generic test notification; queued means Expo accepted, not phone-delivered. */
+  testSystemPush(): Promise<boolean>;
   tree(instance: string): Promise<TreeV3>;
   peek(instance: string, paneId: string): Promise<Peek>;
   /** One-shot read of the pane's conversation; a 409 `no_conversation` is an HostV3Error with that code. */
@@ -677,6 +689,16 @@ export function createHostClientV3(transport: PinnedTransport | null, connection
 
   return {
     bootstrap: () => get('/bootstrap', bootstrapV3Schema, 'bootstrap'),
+    systemPushStatus: () => get('/notifications/push', systemPushStatusSchema, 'system push'),
+    registerSystemPush: (token) =>
+      slowPostJson('/notifications/push/register', JSON.stringify({ token }), systemPushStatusSchema, 'system push'),
+    refreshSystemPushToken: (token) =>
+      slowPostJson('/notifications/push/refresh', JSON.stringify({ token }), systemPushStatusSchema, 'system push'),
+    disableSystemPush: () =>
+      slowPostJson('/notifications/push/disable', '{}', systemPushStatusSchema, 'system push'),
+    testSystemPush: async () =>
+      (await slowPostJson('/notifications/push/test', '{}',
+        z.object({ schema: z.literal(1), queued: z.boolean() }), 'system push')).queued,
     tree: (instance) => get(`/tree?instance=${q(instance)}`, treeV3Schema, 'tree'),
     peek: (instance, paneId) => get(`/panes/${q(paneId)}/peek?instance=${q(instance)}`, peekSchema, 'peek'),
 
