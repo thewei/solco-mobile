@@ -45,6 +45,9 @@ const config: ExpoConfig = {
     favicon: './public/favicon.png',
   },
   plugins: [
+    // Expo SDK 54 lacks UIScene bootstrap required by Xcode 27 / iOS 27.
+    // Remove once migrated to SDK 58's official scene lifecycle.
+    './plugins/with-ios27-scene-lifecycle',
     'expo-router',
     'expo-secure-store',
     // Local alerts always work with an active app process. Expo OS push is

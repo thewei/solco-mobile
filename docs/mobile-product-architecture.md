@@ -66,6 +66,10 @@ Use **Expo SDK 54 with Expo Development Builds and Continuous Native Generation 
 
 The local build constraint is authoritative: macOS 15.6.1 with Xcode 16.1 must remain able to compile the iOS target. Expo's current matrix makes SDK 54 the newest stable line that officially supports Xcode 16.x. Android is the first implementation and validation platform; iOS remains a supported secondary target. Do not use Expo Go as the production-development baseline, and do not move to SDK 55+ until the local Xcode constraint changes.
 
+### Xcode 27 / iOS 27 compatibility while on SDK 54
+
+SDK 54 的生成版 `AppDelegate.swift` 不支持 iOS 27 SDK 强制要求的 UIScene 生命周期。当前在 `plugins/with-ios27-scene-lifecycle.js` 里通过 Expo config plugin 生成 UIScene manifest、scene-owned UIWindow 和 app-delegate deep-link 转发；不手工修改 CNG 的 `ios/`。这是一个受版本约束的临时兼容层（仅验证 SDK 54 模板），在升级到官方支持 iOS 27 的 Expo SDK 58 后必须移除。iOS 27 真机/模拟器的冷启动、深链接、前后台切换与通知验收不能由 Xcode 16.1 的静态测试替代。取证与门禁见 `docs/debug/2026-11-05-ios27-scene-lifecycle.md`。
+
 ### Why Expo wins for Solco Mobile
 
 Expo no longer implies that an application cannot contain native Swift/Kotlin. Development Builds can include arbitrary compatible native libraries, and app-specific native capability can live in a local Expo Module. This preserves access to:

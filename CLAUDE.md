@@ -12,6 +12,7 @@ src/state/ - client-local navigation/session state only
 src/theme/ - Solco Mobile design tokens
 modules/ - local Expo Modules (solco-pinned-transport: Android certificate-fingerprint pinning for the Go Host v3; solco-foreground-service: Android background keep-alive foreground service + battery-optimization helpers)
 src/generated/ - `chat-page.ts`: the desktop Chat page as one embedded HTML string, produced by `pnpm sync:chat-page` from solco/frontend (`bun run build:mobile`); never hand-edited
+plugins/ - Expo CNG iOS scene-lifecycle compatibility plugin for SDK 54 / Xcode 27; remove once upgrading to SDK 58 (see plugins/CLAUDE.md)
 scripts/ - dev-infrastructure scripts; sync-chat-page.mjs builds/embeds the shared Chat page; serve-web.mjs serves dist/ + same-origin /api proxy for the local PWA topology; sync-v3-fixtures.mjs copies the Go Host's golden files (`pnpm check:fixtures` / `pnpm check:chat-page` are the read-only drift checks, run locally beside the solco repo); e2e-v3.sh runs the v3 codecs against a live Go Host
 .github/ - CI: typecheck + lint + test on push/PR (the drift checks need the sibling solco repo, so they stay local)
 public/ - web-static assets served at root: PWA manifest and placeholder icons (validation-period artwork)
