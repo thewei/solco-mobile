@@ -47,6 +47,9 @@ import {
   systemPushStatusSchema,
   factKinds,
   routinesResponseSchema,
+  autonomyResponseSchema,
+  hookKeyCreatedSchema,
+  hookKeyResponseSchema,
   memoryReviewResponseSchema,
   memoryHistoryResponseSchema,
   memoryItemResponseSchema,
@@ -561,6 +564,20 @@ describe('v3 golden files', () => {
     expect(res.routines[0]).toMatchObject({ name: 'morning-check', state: 'draft', requestedBy: 'assistant', source: 'chat', headless: true, approvalState: 'pending' });
     expect(JSON.stringify(res)).not.toMatch(/error|token/i);
     expect(exact(bootstrapV3Schema, await load('bootstrap-personal-agent.json')).capabilities.personalAgentRoutines).toBe(true);
+  });
+
+  it('assistants: autonomy — keys without secrets, receipts without bodies, triggers', async () => {
+    const res = exact(autonomyResponseSchema, await load('personal-agent-autonomy.json'));
+    expect(res.autonomy.hookPath).toMatch(/^\/api\/v3\/hooks\/assistants\/[a-z]_\w+\/wake$/);
+    expect(res.autonomy.keys[0]).toMatchObject({ status: 'active', sources: ['github', 'ci'] });
+    expect(res.autonomy.events[0]).toMatchObject({ source: 'github', resourceKind: 'task', routing: 'recorded' });
+    expect(res.autonomy.triggers[0]).toMatchObject({ state: 'draft', on: 'task.failed' });
+    // A secret is on the wire once — the create answer — and never in a list.
+    expect(JSON.stringify(res)).not.toMatch(/secret|signature/i);
+    const created = exact(hookKeyCreatedSchema, await load('personal-agent-hook-key-created.json'));
+    expect(created.secret).toHaveLength(64);
+    expect(exact(hookKeyResponseSchema, await load('personal-agent-hook-key-revoked.json')).key.id).toBe(created.key.id);
+    expect(exact(bootstrapV3Schema, await load('bootstrap-personal-agent.json')).capabilities.personalAgentAutonomy).toBe(true);
   });
 
   it('assistants: memory workspace and proactivity — items, versions, rules', async () => {
