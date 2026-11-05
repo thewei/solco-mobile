@@ -2,6 +2,7 @@
 > L2 | Parent: ../CLAUDE.md
 
 Members:
+- `debug/` — 原生构建/安装异常的证据链、稳定修复与尚未完成的环境/设备复验门禁；子目录通过 `debug/CLAUDE.md` 索引。
 - `mobile-product-architecture.md` — canonical mobile architecture, ownership, technology selection, Host API and transport boundaries.
 - `personal-agent-mobile-plan.md` — historical 2026-11-03 Go Assistant/Host v3 implementation planning; the current management screens and resident Host are now present in code, so check actual capabilities rather than older pending-state notes.
 - `assistants-chat-first-mobile-plan.md` — **2026-11-04 Chat-first / Assistant Network UX plan**: Contacts + human_dm/peer_dm/group list, typed @, shared ChatPageView, Primary Assistant, Owner Control Center; Network N0–N6 in desktop collaboration plan. Resident Host not yet GUI-independent Provider Chat.

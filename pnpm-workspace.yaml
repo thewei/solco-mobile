@@ -13,3 +13,6 @@ overrides:
 
 allowBuilds:
   unrs-resolver: true
+
+patchedDependencies:
+  react-native-svg@15.12.1: patches/react-native-svg@15.12.1.patch

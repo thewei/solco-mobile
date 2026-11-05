@@ -1,0 +1,6 @@
+diff --git a/RNSVG.podspec b/RNSVG.podspec
+--- a/RNSVG.podspec
++++ b/RNSVG.podspec
+@@ -23,1 +23,1 @@
+-  s.platforms         = { :osx => "10.14", :ios => "12.4", :tvos => "12.4", :visionos => "1.0" }
++  s.platforms         = { :osx => "10.14", :ios => "15.1", :tvos => "15.1", :visionos => "1.0" }
