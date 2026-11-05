@@ -43,6 +43,7 @@ import {
   assistantActivityPageSchema,
   assistantActivityAckSchema,
   coordinatorReportResponseSchema,
+  coordinatorReportSchema,
   factKinds,
   routinesResponseSchema,
   memoryReviewResponseSchema,
@@ -526,6 +527,21 @@ describe('v3 golden files', () => {
     expect(resolved).toMatchObject({ state: 'submitted', throughSeq: 9, submittedSeq: 9 });
     expect(resolved.assistantId).toBe(waiting.assistantId);
     expect(exact(bootstrapV3Schema, await load('bootstrap-personal-agent.json')).capabilities.personalAgentNarrativeReports).toBe(true);
+    // A newer Host provides provider-owned evidence. Old Host fixtures
+    // without replyState remain readable but cannot claim verification.
+    expect(waiting.replyState).toBeUndefined();
+    const provider = coordinatorReportSchema.parse({
+      assistantId: waiting.assistantId, state: 'submitted', throughSeq: 9,
+      replyState: 'verified', replySessionId: 'original-omp-session',
+      replyMessageId: 'final-123', replyVerifiedAt: 1800000011000,
+    });
+    expect(provider).toMatchObject({ replyState: 'verified', replyMessageId: 'final-123' });
+    expect(coordinatorReportSchema.safeParse({
+      assistantId: waiting.assistantId, state: 'submitted', replyState: 'verified',
+    }).success).toBe(false);
+    expect(coordinatorReportSchema.safeParse({
+      assistantId: waiting.assistantId, state: 'submitted', replyState: 'awaiting',
+    }).success).toBe(true);
   });
 
   it('assistants: routines — drafted in chat, approved by a person, owner on every row', async () => {

@@ -179,9 +179,10 @@ export default function AssistantActivityScreen() {
             <Card padded gap={8}>
               <Text color={colors.danger} fontSize={14} fontWeight="700">Coordinator report needs review</Text>
               <Text color={colors.textMuted} fontSize={12.5} lineHeight={18}>
-                An automatic progress request may already have reached OMP. Open the original Chat to check it; Solco will not retry without your explicit decision.
+                Solco could not confirm a completed OMP reply for this batch. Check the original Chat before deciding whether to skip or retry.
               </Text>
-              <Text color={colors.textSubtle} fontSize={12}>Activity through fact #{report.data.throughSeq}. This is delivery status, not a completed reply.</Text>
+              {report.data.lastError ? <Text color={colors.textMuted} fontSize={12}>{report.data.lastError}</Text> : null}
+              <Text color={colors.textSubtle} fontSize={12}>Activity through fact #{report.data.throughSeq}. No completed OMP reply has been verified.</Text>
               {manage ? (
                 <XStack gap={8} flexWrap="wrap">
                   <PillButton compact tone="soft" label="Already delivered · Skip" disabled={resolvingReport} onPress={() => reviewReport('skip')} />
@@ -192,6 +193,16 @@ export default function AssistantActivityScreen() {
           ) : report.data?.state === 'queued' || report.data?.state === 'claimed' ? (
             <Card padded>
               <Text color={colors.textMuted} fontSize={12}>A progress update is {report.data.state === 'claimed' ? 'being submitted' : 'awaiting submission'} to the original OMP Coordinator; its reply is not yet confirmed.</Text>
+            </Card>
+          ) : report.data?.state === 'submitted' && report.data.replyState === 'awaiting' ? (
+            <Card padded gap={5}>
+              <Text color={colors.text} fontWeight="700" fontSize={13}>Report delivered · Waiting for OMP reply</Text>
+              <Text color={colors.textMuted} fontSize={12}>Herdr accepted activity through fact #{report.data.throughSeq}. Solco is checking the original OMP transcript for a final reply.</Text>
+            </Card>
+          ) : report.data?.state === 'submitted' && report.data.replyState === 'verified' ? (
+            <Card padded gap={5}>
+              <Text color={colors.success} fontWeight="700" fontSize={13}>OMP reply verified</Text>
+              <Text color={colors.textMuted} fontSize={12}>Activity through fact #{report.data.throughSeq} · original message {report.data.replyMessageId ?? 'verified'}</Text>
             </Card>
           ) : null}
           <Text color={colors.textMuted} fontSize={13} lineHeight={19}>

@@ -1247,6 +1247,18 @@ export const coordinatorReportSchema = z.object({
   paneId: z.string().optional(),
   coordinatorRevision: z.number().int().nonnegative().default(0),
   updatedAt: z.number().int().nonnegative().default(0),
+  // Optional for hosts built before provider-owned reply reconciliation.
+  // A submitted Herdr prompt is never assumed to be an OMP answer.
+  replyState: z.enum(['untracked', 'awaiting', 'verified', 'interrupted', 'handled']).optional(),
+  replySessionId: z.string().optional(),
+  replyMessageId: z.string().optional(),
+  replyVerifiedAt: z.number().int().nonnegative().optional(),
+}).superRefine((report, context) => {
+  // Do not render a completion badge from a claimed provider status that
+  // lacks the actual OMP session, terminal message ID or verification time.
+  if (report.replyState === 'verified' && (!report.replySessionId || !report.replyMessageId || !report.replyVerifiedAt)) {
+    context.addIssue({ code: 'custom', message: 'Verified OMP reply requires provider message evidence' });
+  }
 });
 export type CoordinatorReport = z.infer<typeof coordinatorReportSchema>;
 export const coordinatorReportResponseSchema = z.object({ schema: z.literal(1), report: coordinatorReportSchema });
