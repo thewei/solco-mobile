@@ -1,9 +1,12 @@
 // [INPUT]: one tree pane, its instance, and a press handler.
 // [OUTPUT]: PaneRow — the Mac's agent title, the provider (only when the title does not already say it),
 //           the Workspace, one-line peek, the Mac's last-worked age and the one status slot.
-//           The title owns its own line (up to two); provider · Workspace · age share the small line under it.
-// [POS]: Home's Needs-you / Working cards. The peek is the Host's read-only last line of the pane.
-// [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+//           Card mode (default): the title owns its own line (up to two); provider · Workspace · age and the peek
+//           share the small lines under it, a chevron marks navigation. Flat mode (Home's list, ChatGPT-style):
+//           title + ONE muted preview line — the peek when it has one, else provider · Workspace · age — no
+//           chevron, no inset of its own (the parent owns the gutter).
+// [POS]: Home's Needs-you / Working / Idle flat rows (`flat`); AgentGroups' picker cards (default). The peek is
+//        the Host's read-only last line of the pane.
 import { ChevronDown, ChevronRight } from 'lucide-react-native';
 import { useState } from 'react';
 import { Text, XStack, YStack } from 'tamagui';
@@ -17,7 +20,7 @@ import { Tap } from '@/components/tap';
 import { colors, row } from '@/theme/tokens';
 
 /** `peek` off = no polling for this row (Idle rows: nothing is happening there to read). */
-export function PaneRow({ instance, pane, caption, now, peek: showPeek = true, onPress, onOpenBackground }: { instance: string; pane: TreePane; caption?: string; now: number; peek?: boolean; onPress: () => void; onOpenBackground?: (item: TreeBackground) => void }) {
+export function PaneRow({ instance, pane, caption, now, peek: showPeek = true, flat = false, onPress, onOpenBackground }: { instance: string; pane: TreePane; caption?: string; now: number; peek?: boolean; flat?: boolean; onPress: () => void; onOpenBackground?: (item: TreeBackground) => void }) {
   const peek = usePeekV3(instance, pane.paneId, showPeek);
   const line = showPeek ? peek.data?.line.trim() : undefined;
   const title = paneTitle(pane);
@@ -28,17 +31,23 @@ export function PaneRow({ instance, pane, caption, now, peek: showPeek = true, o
   return (
     <YStack>
     <Tap role="button" accessibilityLabel={`Open ${paneTitle(pane)}`} onPress={onPress}>
-      <XStack alignItems="center" gap={row.gap} paddingVertical={row.padY} paddingHorizontal={row.padX} minHeight={row.minHeight}>
+      <XStack alignItems="center" gap={row.gap} paddingVertical={row.padY} paddingHorizontal={flat ? 0 : row.padX} minHeight={row.minHeight}>
         <YStack flex={1} gap="$1">
           <Text color={colors.text} fontSize={15} fontWeight="650" numberOfLines={2}>{title}</Text>
-          {meta ? <Text color={colors.textSubtle} fontSize={12} numberOfLines={1}>{meta}</Text> : null}
-          {line ? <Text color={colors.textMuted} fontSize={12} numberOfLines={1} fontFamily="$mono">{line}</Text> : null}
+          {flat ? (
+            line ?? meta ? <Text color={colors.textMuted} fontSize={12} numberOfLines={1} fontFamily={line ? '$mono' : undefined}>{line ?? meta}</Text> : null
+          ) : (
+            <>
+              {meta ? <Text color={colors.textSubtle} fontSize={12} numberOfLines={1}>{meta}</Text> : null}
+              {line ? <Text color={colors.textMuted} fontSize={12} numberOfLines={1} fontFamily="$mono">{line}</Text> : null}
+            </>
+          )}
         </YStack>
         <StatusSlot status={pane.agent?.status} />
-        <Icon as={ChevronRight} size="sm" tone="subtle" />
+        {flat ? null : <Icon as={ChevronRight} size="sm" tone="subtle" />}
       </XStack>
     </Tap>
-    {background.length > 0 && onOpenBackground ? <BackgroundList items={background} onOpen={onOpenBackground} /> : null}
+    {background.length > 0 && onOpenBackground ? <BackgroundList flat={flat} items={background} onOpen={onOpenBackground} /> : null}
     </YStack>
   );
 }
@@ -47,13 +56,13 @@ export function PaneRow({ instance, pane, caption, now, peek: showPeek = true, o
  * The agent's sub-agents and the service its pane serves, one folded list (circle = sub-agent, square = service).
  * Starts open while something is working, like the desktop sidebar; the user's own tap wins afterwards.
  */
-function BackgroundList({ items, onOpen }: { items: readonly TreeBackground[]; onOpen: (item: TreeBackground) => void }) {
+function BackgroundList({ items, onOpen, flat = false }: { items: readonly TreeBackground[]; onOpen: (item: TreeBackground) => void; flat?: boolean }) {
   const [chosen, setChosen] = useState<boolean | null>(null);
   const open = chosen ?? backgroundBusy(items);
   return (
     <YStack paddingBottom="$2">
       <Tap role="button" accessibilityLabel={`${open ? 'Fold' : 'Show'} background work`} onPress={() => setChosen(!open)}>
-        <XStack alignItems="center" gap="$1" paddingHorizontal={row.padX} paddingVertical="$1">
+        <XStack alignItems="center" gap="$1" paddingHorizontal={flat ? 0 : row.padX} paddingVertical="$1">
           <Icon as={open ? ChevronDown : ChevronRight} size="sm" tone="subtle" />
           <Text color={colors.textSubtle} fontSize={12} numberOfLines={1}>{backgroundSummary(items)}</Text>
         </XStack>
@@ -61,7 +70,7 @@ function BackgroundList({ items, onOpen }: { items: readonly TreeBackground[]; o
       {open
         ? items.map((item) => (
             <Tap key={item.id} role="button" accessibilityLabel={`${item.kind === 'service' ? 'Service' : 'Sub-agent'} ${item.title}`} onPress={() => onOpen(item)}>
-              <XStack alignItems="center" gap={row.gap} paddingLeft={row.padX + 14} paddingRight={row.padX} paddingVertical="$1.5">
+              <XStack alignItems="center" gap={row.gap} paddingLeft={flat ? 14 : row.padX + 14} paddingRight={flat ? 0 : row.padX} paddingVertical="$1.5">
                 <YStack flex={1}>
                   <Text color={colors.text} fontSize={13} fontWeight="600" numberOfLines={1}>{item.title}</Text>
                   {item.detail ? <Text color={colors.textSubtle} fontSize={12} numberOfLines={1}>{item.detail}</Text> : null}

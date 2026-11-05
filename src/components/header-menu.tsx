@@ -1,6 +1,8 @@
-// [INPUT]: menu items (glyph, label, optional tone, optional hairline above) and a press handler each.
+// [INPUT]: menu items (glyph, label, optional tone, optional hairline above) and a press handler each;
+//           `barHeight` when anchoring under a custom bar instead of the native-stack one.
 // [OUTPUT]: HeaderMenu — the ⋯ bar button and its dropdown card, anchored under the bar's right edge.
-// [POS]: Collapses secondary top-bar actions into one menu (Chat's Changes / Terminal / Close). A plain RN
+// [POS]: Collapses secondary top-bar actions into one menu (Chat's Changes / Terminal / Close; Home's
+//        Assistants / Automations / Remote Desktop / Connection under its own 52pt bar via `barHeight`). A plain RN
 //        Modal over a dimmed backdrop (OptionSheet's pattern): a few short rows need no native menu library.
 // [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 import { Ellipsis, type LucideIcon } from 'lucide-react-native';
@@ -27,7 +29,7 @@ export interface HeaderMenuItem {
 /** The native-stack header bar height below the status bar. */
 const BAR_HEIGHT = Platform.select({ ios: 44, default: 56 });
 
-export function HeaderMenu({ label = 'More actions', items }: { label?: string; items: HeaderMenuItem[] }) {
+export function HeaderMenu({ label = 'More actions', items, barHeight = BAR_HEIGHT }: { label?: string; items: HeaderMenuItem[]; barHeight?: number }) {
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
   return (
@@ -36,7 +38,7 @@ export function HeaderMenu({ label = 'More actions', items }: { label?: string; 
       <Modal visible={open} transparent animationType="fade" statusBarTranslucent onRequestClose={close}>
         <SafeAreaView edges={['top']} style={{ flex: 1 }}>
           <Pressable style={{ flex: 1 }} onPress={close} accessibilityLabel="Close menu">
-            <XStack justifyContent="flex-end" paddingTop={BAR_HEIGHT} paddingRight={6}>
+            <XStack justifyContent="flex-end" paddingTop={barHeight} paddingRight={6}>
               <YStack
                 backgroundColor={colors.surface}
                 borderColor={colors.border}

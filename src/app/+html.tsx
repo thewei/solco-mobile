@@ -3,7 +3,8 @@
 // [POS]: src/app 的 Web-only 壳层文件——唯一允许出现 <html>/<head> 的地方；原生平台忽略此文件。
 //        承载 PWA 安装元数据：manifest 链接、theme-color、apple-touch-icon（iOS 加主屏至今
 //        只认这个 link，manifest icons 不够）与 apple status-bar 样式（standalone 适配）；
-//        移动视口/滚动行为基线。颜色值须与 src/theme/tokens.ts 的 canvas 保持同步。
+//        移动视口/滚动行为基线；一行 button{text-align:left}——UA 默认居中会沿 CSS 继承进
+//        Tap/role=button 的行文本（原生 RN 默认左对齐）。颜色值须与 src/theme/tokens.ts 的 canvas 保持同步。
 // [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 import { ScrollViewStyleReset } from 'expo-router/html';
 import type { PropsWithChildren } from 'react';
@@ -29,6 +30,7 @@ export default function Root({ children }: PropsWithChildren) {
         <title>Solco</title>
         {/* 本版 expo-router 的 ScrollViewStyleReset 为零 props 的 style 注入，按其官方 Html 同型置于 head */}
         <ScrollViewStyleReset />
+        <style dangerouslySetInnerHTML={{ __html: 'button{text-align:left}' }} />
       </head>
       <body>{children}</body>
     </html>

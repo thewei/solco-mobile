@@ -1,9 +1,10 @@
 // [INPUT]: the paired Go Host's tree (events-hinted via BackgroundBridge's shared socket — the drawer shares the same queries) and per-pane peeks.
-// [OUTPUT]: Home: a top bar (≡ opens the sessions drawer, ⚙ opens Connection) over the panes that
-//           the Mac's own grouping — Needs you, Working, Idle (each most recently worked first) — each
-//           with a one-line peek; when nothing needs attention, a quiet greeting that points at the drawer. An agent row opens its Chat (when the Host
-//           serves it), any other row its terminal. When the Host advertises `launch`, the new-session
-//           composer sits at the bottom (LaunchComposer).
+// [OUTPUT]: Home: a top bar (≡ opens the sessions drawer; the ⋯ HeaderMenu holds Assistants / Automations /
+//           Remote Desktop when the Host advertises them, plus Connection settings) over a flat ChatGPT-style
+//           list — the Mac's own grouping Needs you / Working / Idle (each most recently worked first) as
+//           borderless rows (title + one muted preview line); when nothing needs attention, a quiet greeting
+//           that points at the drawer. An agent row opens its Chat (when the Host serves it), any other row its
+//           terminal. When the Host advertises `launch`, the new-session composer sits at the bottom (LaunchComposer).
 // [POS]: The Agents tab of the bottom bar and the mobile root screen (designs/mobile-projection, nav A). Navigation is client-local and never
 //        moves the Mac's focus.
 // [PROTOCOL]: 变更时更新此头部，然后检查 ../CLAUDE.md
@@ -16,13 +17,14 @@ import type { TreeBackground } from '@/contracts/host-v3';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScrollView, Text, XStack, YStack } from 'tamagui';
 
+import { HeaderMenu } from '@/components/header-menu';
 import { IconButton } from '@/components/icon-button';
 import { LaunchComposer } from '@/components/launch-composer';
 import { Fade, Reveal } from '@/components/motion';
 import { PaneRow } from '@/components/pane-row';
 import { PillButton } from '@/components/pill-button';
 import { pullRefresh } from '@/components/pull-refresh';
-import { Card, SectionLabel } from '@/components/section';
+import { SectionLabel } from '@/components/section';
 import { ListSkeleton } from '@/components/skeletons';
 import { useLiveTreeEvents } from '@/features/host/background-bridge';
 import { connectionLine, describeConnectFailure } from '@/features/host/connect-failure';
@@ -41,14 +43,10 @@ function Group({ title, items, instance, now, peek = true, onOpen, onOpenBackgro
   if (items.length === 0) return null;
   return (
     <Reveal layout>
-      <SectionLabel>{title}</SectionLabel>
-      <Card>
-        {items.map(({ pane, workspace }, index) => (
-          <YStack key={pane.paneId} borderTopWidth={index === 0 ? 0 : 1} borderTopColor={colors.border}>
-            <PaneRow instance={instance} pane={pane} caption={workspace.label} now={now} peek={peek} onPress={() => onOpen(pane)} onOpenBackground={(item) => onOpenBackground(pane, item)} />
-          </YStack>
-        ))}
-      </Card>
+      <SectionLabel inset={false}>{title}</SectionLabel>
+      {items.map(({ pane, workspace }) => (
+        <PaneRow key={pane.paneId} instance={instance} pane={pane} caption={workspace.label} now={now} peek={peek} flat onPress={() => onOpen(pane)} onOpenBackground={(item) => onOpenBackground(pane, item)} />
+      ))}
     </Reveal>
   );
 }
@@ -84,8 +82,9 @@ export default function HomeScreen() {
   const loading = !blocked && (bootstrap.isLoading || (instance !== null && tree.isLoading));
   const workspaces = tree.data?.workspaces ?? [];
   const summary = summarize(workspaces);
-  const chatServed = bootstrap.data?.capabilities.chat === true;
-  const launchKinds = bootstrap.data?.capabilities.launch ? (bootstrap.data.launchKinds ?? []) : [];
+  const caps = bootstrap.data?.capabilities;
+  const chatServed = caps?.chat === true;
+  const launchKinds = caps?.launch ? (bootstrap.data?.launchKinds ?? []) : [];
 
   const openPane = (pane: FlatPane['pane']) => {
     if (instance) router.push(paneRoute(pane, instance, chatServed));
@@ -112,10 +111,16 @@ export default function HomeScreen() {
             {line.text}
           </Text>
         </YStack>
-        {bootstrap.data?.capabilities.personalAgent ? <IconButton as={Bot} tone="muted" label="Assistants" onPress={() => router.push('/assistants')} /> : null}
-        {bootstrap.data?.capabilities.automations ? <IconButton as={Zap} tone="muted" label="Automations" onPress={() => router.push('/automations')} /> : null}
-        {bootstrap.data?.capabilities.remoteDesktop ? <IconButton as={Monitor} tone="muted" label="Remote Desktop" onPress={() => router.push('/desktop')} /> : null}
-        <IconButton as={Settings} tone="muted" label="Connection settings" onPress={() => router.push('/connect')} />
+        <HeaderMenu
+          barHeight={52}
+          label="More actions"
+          items={[
+            ...(caps?.personalAgent ? [{ key: 'assistants', label: 'Assistants', icon: Bot, onPress: () => router.push('/assistants') }] : []),
+            ...(caps?.automations ? [{ key: 'automations', label: 'Automations', icon: Zap, onPress: () => router.push('/automations') }] : []),
+            ...(caps?.remoteDesktop ? [{ key: 'desktop', label: 'Remote Desktop', icon: Monitor, onPress: () => router.push('/desktop') }] : []),
+            { key: 'settings', label: 'Connection settings', icon: Settings, separated: true, onPress: () => router.push('/connect') },
+          ]}
+        />
       </XStack>
 
       {blocked ? (
