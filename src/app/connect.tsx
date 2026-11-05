@@ -20,6 +20,7 @@ import { Reveal } from '@/components/motion';
 import { PillButton } from '@/components/pill-button';
 import { Card, SectionLabel } from '@/components/section';
 import { KeepAliveCard } from '@/components/keep-alive-card';
+import { SystemPushCard } from '@/components/system-push-card';
 import { describeConnectFailure } from '@/features/host/connect-failure';
 import { useHostProbes } from '@/features/host/queries-v3';
 import { hostId } from '@/lib/host-book';
@@ -135,6 +136,7 @@ export default function ConnectScreen() {
           </Card>
         )}
         <KeepAliveCard />
+        <SystemPushCard />
       </ScrollView>
     </SafeAreaView>
   );

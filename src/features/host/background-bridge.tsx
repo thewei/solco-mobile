@@ -35,11 +35,13 @@ import {
 import { createAttentionDelivery } from '@/features/host/attention-delivery';
 import { automationNotice, type AutomationFrame } from '@/features/host/automation-notice';
 import { createAssistantActivityNoticePump } from '@/features/host/assistant-activity-notice';
+import { assistantPushRoute, assistantPushHostId } from '@/features/host/system-push-route';
 import { newRequestId } from '@/features/host/launch-model';
 import { keepAliveStatus } from '@/features/host/keep-alive-status';
 import { paneRoute, summarize } from '@/features/host/pane-model';
 import { useBootstrapV3, useHostInstance, useTreeEvents, useTreeV3 } from '@/features/host/queries-v3';
 import { getForegroundService } from '@/lib/foreground-service-native';
+import { expoProjectId } from '@/lib/expo-push-config';
 import { useHostV3 } from '@/lib/host-v3-provider';
 import { useConnectionHealth } from '@/features/host/use-connection-health';
 import { pushWidgetUpdate } from '@/features/widget/widget-sync';
@@ -53,7 +55,7 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 export function BackgroundBridge({ children }: PropsWithChildren) {
   const router = useRouter();
-  const { client, connection } = useHostV3();
+  const { client, connection, hosts, activeId, status: hostStatus, switchTo } = useHostV3();
   const hostBootstrap = useBootstrapV3();
   useConnectionHealth(); // network/app/request signals → the ConnectionManager (fastest route, dead sockets rebuilt)
   const { instance, bootstrap } = useHostInstance();
@@ -149,6 +151,52 @@ export function BackgroundBridge({ children }: PropsWithChildren) {
       clearInterval(timer);
     };
   }, [client, canNotifyAssistant]);
+
+  // Reconcile an *already opted-in* Expo push token on app resume and FCM
+  // rotation. This is NOT registration: the Host's /refresh endpoint refuses
+  // when the owner disabled remote push, even across a concurrent race.
+  // The phone keeps its local notice pump independently for GMS-less ROMs.
+  const canSystemPush = hostBootstrap.data?.capabilities.assistantSystemPush === true;
+  useEffect(() => {
+    const projectId = expoProjectId();
+    if (Platform.OS !== 'android' || !client || !canSystemPush || !projectId) return undefined;
+    let current = true;
+    let updating = false;
+    const renew = (deviceToken?: Notifications.DevicePushToken) => {
+      if (updating || !current) return;
+      updating = true;
+      void (async () => {
+        try {
+          const status = await client.systemPushStatus();
+          if (!current || !status.enabled) return;
+          const permission = await Notifications.getPermissionsAsync();
+          if (!current || !permission.granted) return;
+          // The native rotation listener already gives the new FCM token.
+          // Passing it explicitly avoids recursively calling
+          // getDevicePushTokenAsync from inside that same listener.
+          const token = await Notifications.getExpoPushTokenAsync({
+            projectId, ...(deviceToken ? { devicePushToken: deviceToken } : {}),
+          });
+          if (current) await client.refreshSystemPushToken(token.data);
+        } catch {
+          // Older host, unavailable Google Play Services, offline Mac, and
+          // explicit opt-out are not fatal. The next foreground resumes.
+        } finally {
+          updating = false;
+        }
+      })();
+    };
+    renew();
+    const appState = AppState.addEventListener('change', (state) => {
+      if (state === 'active') renew();
+    });
+    const rotated = Notifications.addPushTokenListener((deviceToken) => renew(deviceToken));
+    return () => {
+      current = false;
+      rotated.remove();
+      appState.remove();
+    };
+  }, [client, canSystemPush]);
 
   // The ongoing notification is the agent status line (Needs you / Working / Idle), re-posted as the tree moves.
   const summary = useMemo(() => (tree.data ? summarize(tree.data.workspaces) : null), [tree.data]);
@@ -258,9 +306,53 @@ export function BackgroundBridge({ children }: PropsWithChildren) {
   // An inline Approve / Deny goes to the same card answer as the open Chat (Herdr-gated, refused when the card moved on);
   // an inline Reply goes to the same Chat send as the in-app composer (Herdr-gated: a busy or
   // not-ready agent refuses) and never opens the app; a refusal is told in a notification of its own.
+  const handledPushes = useRef(new Set<string>());
   useEffect(() => {
     if (Platform.OS === 'web') return undefined;
+    const handlePushRoute = (response: Notifications.NotificationResponse): boolean => {
+      if (response.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return false;
+      const data = response.notification.request.content.data;
+      const route = assistantPushRoute(data);
+      if (!route) return false;
+      const hasMac = data?.hostId !== undefined;
+      const mac = hasMac ? assistantPushHostId(data) : null;
+      // A remote push from a removed/unknown Mac cannot navigate in the
+      // currently selected Mac, even if Assistant IDs happen to collide.
+      if (hasMac && !mac) return true;
+      // A cold-start response may arrive before SecureStore has hydrated
+      // the paired Host book; do not navigate before the root route is ready.
+      // Keep it cached and reconsider once the paired state is known.
+      if (hostStatus === 'loading') return true;
+      const matching = mac ? hosts.find((host) => host.fingerprint.slice(0, 16).toLowerCase() === mac) : null;
+      if (hostStatus !== 'paired' || (mac && !matching)) {
+        void Notifications.clearLastNotificationResponseAsync().catch(() => undefined);
+        return true;
+      }
+      const key = response.notification.request.identifier + ':' + response.notification.date;
+      if (handledPushes.current.has(key)) return true;
+      handledPushes.current.add(key);
+      if (handledPushes.current.size > 128) handledPushes.current.clear();
+      void (async () => {
+        try {
+          if (matching && matching.fingerprint !== activeId) await switchTo(matching.fingerprint);
+          router.push(route);
+          // Never replay a prior push on the next cold launch after the user
+          // already opened it, and never perform a notification action here.
+          await Notifications.clearLastNotificationResponseAsync().catch(() => undefined);
+        } catch {
+          handledPushes.current.delete(key);
+        }
+      })();
+      return true;
+    };
+    // Android may start the process by tapping FCM while no React listener
+    // existed. Replaying only a validated navigation (never inline actions)
+    // makes a true background OS push open the correct Activity page.
+    void Notifications.getLastNotificationResponseAsync().then((last) => {
+      if (last) handlePushRoute(last);
+    }).catch(() => undefined);
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      if (handlePushRoute(response)) return;
       const content = response.notification.request.content;
       const userText = 'userText' in response ? (response.userText as string | undefined) : undefined;
       const reply = parseReply(response.actionIdentifier, userText, content.data);
@@ -304,7 +396,7 @@ export function BackgroundBridge({ children }: PropsWithChildren) {
       }
     });
     return () => sub.remove();
-  }, [router, client]);
+  }, [router, client, hosts, activeId, hostStatus, switchTo]);
 
   return <LiveEventsContext.Provider value={live}>{children}</LiveEventsContext.Provider>;
 }
