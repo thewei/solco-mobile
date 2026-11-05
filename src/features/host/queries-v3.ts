@@ -854,9 +854,16 @@ export function useChatStream(instance: string | null, paneId: string | null) {
   useEffect(() => {
     if (!client || !instance || !paneId) return undefined;
     let stopped = false;
+    // Reconnects can overlap a delayed close/probe from the previous socket.
+    // Only the newest generation may touch the visible Chat or schedule work.
+    let generation = 0;
     let socket: { close(): void; older(): void } | null = null;
     olderRef.current = () => socket?.older();
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const schedule = (callback: () => void, delay: number) => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { timer = undefined; callback(); }, delay);
+    };
     // A new client (the route changed under the same conversation) keeps the frame and a live phase on screen:
     // the next frame replaces it whole, so the page never goes back to loading.
     setPhase((current) => (current === 'live' ? current : 'connecting'));
@@ -864,49 +871,61 @@ export function useChatStream(instance: string | null, paneId: string | null) {
     // A just-launched agent has no session file for a few seconds: show "none" but keep asking, so the
     // conversation appears on its own instead of staying on the empty state until the user backs out.
     const waitForConversation = () => {
+      // A new agent may not have written its JSONL yet. Do not keep showing
+      // the previous session's transcript while waiting for the next one.
+      setFrame(null);
       setPhase('none');
-      timer = setTimeout(connect, NO_CONVERSATION_RECHECK_MS);
+      schedule(connect, NO_CONVERSATION_RECHECK_MS);
     };
     const retry = () => {
       setPhase('reconnecting');
       attempt.current += 1;
       const delay = Math.min(EVENTS_BACKOFF_BASE_MS * 2 ** (attempt.current - 1), EVENTS_BACKOFF_CAP_MS);
-      timer = setTimeout(connect, delay);
+      schedule(connect, delay);
     };
     // The Host refuses the upgrade itself (HTTP 409/404) when there is no conversation to follow, and a
     // WebSocket client cannot read that status — so a socket that never delivered a frame asks over GET.
-    const probe = () => {
+    const probe = (ticket: number) => {
       client.chat(instance, paneId).then(
-        () => !stopped && retry(),
+        () => { if (!stopped && ticket === generation) retry(); },
         (error: unknown) => {
-          if (stopped) return;
+          if (stopped || ticket !== generation) return;
           if (error instanceof HostV3Error && error.kind === 'http' && error.code === 'no_conversation') return waitForConversation();
-          if (error instanceof HostV3Error && error.kind === 'http' && error.status === 404) return setPhase('gone');
+          if (error instanceof HostV3Error && error.kind === 'http' && error.status === 404) {
+            setFrame(null);
+            setPhase('gone');
+            return;
+          }
           retry();
         },
       );
     };
     const connect = () => {
+      const ticket = ++generation;
+      socket?.close();
       let gotFrame = false;
       socket = client.openChat(instance, paneId, {
         onFrame(next) {
+          if (stopped || ticket !== generation) return;
           gotFrame = true;
           attempt.current = 0;
           setPhase('live');
           setFrame(next);
         },
         onClose(event) {
-          if (stopped) return;
+          if (stopped || ticket !== generation) return;
           if (event.noConversation) return waitForConversation();
-          if (event.gone) return setPhase('gone');
+          if (event.gone) { setFrame(null); setPhase('gone'); return; }
           if (gotFrame) return retry();
-          probe();
+          probe(ticket);
         },
       });
     };
     connect();
     return () => {
       stopped = true;
+      generation += 1;
+      olderRef.current = () => undefined;
       if (timer) clearTimeout(timer);
       socket?.close();
     };

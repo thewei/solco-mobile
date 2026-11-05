@@ -7,8 +7,9 @@ import type { ChatDeltaFrame, ChatFrame } from '@/contracts/host-v3';
 /** Never guess a missing Token or extend a shifted conversation window. */
 export function applyHostChatDelta(base: ChatFrame | null, delta: ChatDeltaFrame): ChatFrame | null {
   if (!base || base.seq === undefined || base.seq !== delta.baseSeq ||
-      delta.seq <= delta.baseSeq || delta.paneId !== base.paneId ||
-      delta.turns.length > 3 || delta.start > base.state.turns.length) {
+      delta.seq !== delta.baseSeq + 1 || delta.paneId !== base.paneId ||
+      delta.turns.length > 3 || delta.start > base.state.turns.length ||
+      delta.start < Math.max(0, base.state.turns.length - 3)) {
     return null;
   }
   return {

@@ -6,7 +6,7 @@
 // [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 // Invariants: the page loads offline from the embedded string and can only talk to its bridge; a tapped web link
 //             leaves for the system browser, never navigates the page.
-import { useCallback, useMemo, useRef, type ComponentType, type Ref } from 'react';
+import { useCallback, useEffect, useMemo, useRef, type ComponentType, type Ref } from 'react';
 import { Linking } from 'react-native';
 import WebViewJsx, { type WebViewMessageEvent } from 'react-native-webview';
 
@@ -25,6 +25,7 @@ interface WebViewNativeProps {
   javaScriptEnabled: boolean;
   domStorageEnabled: boolean;
   onMessage: (event: WebViewMessageEvent) => void;
+  onLoadStart: () => void;
   onLoadEnd: () => void;
   onShouldStartLoadWithRequest: (request: { url: string }) => boolean;
   setSupportMultipleWindows: boolean;
@@ -69,14 +70,20 @@ export function ChatPageView({ state, conversationId, seedDraft = '', openSubage
     post(eventMessage('chat:subagent-open', openSubagent));
   }, [openSubagent, post]);
 
-  // Push every new state once the page is up (its own Snapshot call covers the first one).
-  if (latest.current !== state) {
+  // Native WebView messaging is an imperative side effect: never inject
+  // JavaScript during React's render (concurrent/aborted renders could leak
+  // stale frames to the page). Only publish committed state after the page is ready.
+  useEffect(() => {
+    ready.current = false;
+    asked.current = false;
+  }, [html]);
+  useEffect(() => {
     latest.current = state;
     if (ready.current && state) {
       post(eventMessage('chat:updated', state));
       askSubagent();
     }
-  }
+  }, [state, askSubagent, post]);
 
   const onMessage = useCallback(
     (event: WebViewMessageEvent) => {
@@ -99,6 +106,7 @@ export function ChatPageView({ state, conversationId, seedDraft = '', openSubage
       javaScriptEnabled
       domStorageEnabled
       onMessage={onMessage}
+      onLoadStart={() => { ready.current = false; }}
       onLoadEnd={() => {
         ready.current = true;
         if (latest.current) post(eventMessage('chat:updated', latest.current));

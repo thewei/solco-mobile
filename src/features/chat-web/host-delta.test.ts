@@ -44,6 +44,8 @@ describe('Host Chat delta', () => {
     expect(applyHostChatDelta(base, { ...delta, paneId: 'other' })).toBeNull();
     expect(applyHostChatDelta(base, { ...delta, start: 50 })).toBeNull();
     expect(applyHostChatDelta(base, { ...delta, seq: 51 })).toBeNull();
+    expect(applyHostChatDelta(base, { ...delta, seq: 54 })).toBeNull();
+    expect(applyHostChatDelta(base, { ...delta, start: 0 })).toBeNull();
     expect(chatDeltaFrameSchema.safeParse({ ...delta, turns: Array(4).fill({ user: false }) }).success).toBe(false);
   });
 });
