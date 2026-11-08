@@ -1,0 +1,22 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.whstudio.solco'
+version = '0.1.0'
+
+android {
+  namespace "com.whstudio.solco.tailcat"
+  defaultConfig {
+    versionCode 1
+    versionName '0.1.0'
+  }
+}
+
+dependencies {
+  // The AAR itself is compiled into the app by android/app/build.gradle (one line, one owner);
+  // this module only compiles against it. Same line React Native ships, so Gradle resolves one OkHttp.
+  compileOnly files("libs/tailcat.aar")
+  implementation "com.squareup.okhttp3:okhttp:4.9.2"
+}

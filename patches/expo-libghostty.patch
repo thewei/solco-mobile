@@ -1,0 +1,668 @@
+diff --git a/android/src/main/java/expo/modules/libghostty/ExpoLibghosttyModule.kt b/android/src/main/java/expo/modules/libghostty/ExpoLibghosttyModule.kt
+index 1516400296a26128222f73aa35b79104d5a12fb0..339bc14608f6f3ad1057e8a59878b09ad0dd3e22 100644
+--- a/android/src/main/java/expo/modules/libghostty/ExpoLibghosttyModule.kt
++++ b/android/src/main/java/expo/modules/libghostty/ExpoLibghosttyModule.kt
+@@ -12,13 +12,34 @@ class ExpoLibghosttyModule : Module() {
+     Name("ExpoLibghostty")
+ 
+     View(ExpoLibghosttyView::class) {
+-      Events("onInput", "onResize")
++      Events("onInput", "onResize", "onScrollLines", "onFontSize", "onTap", "onMouse")
+ 
+       // Base font size in dp (default 14); applied live, the grid reflows.
+       Prop("fontSize") { view: ExpoLibghosttyView, size: Float ->
+         view.setFontSize(size)
+       }
+ 
++      // Pin the grid to the program's own size (e.g. the Mac pane's); the view then pans over it. Null = fit the view.
++      Prop("fixedGrid") { view: ExpoLibghosttyView, grid: FixedGridRecord? ->
++        view.setFixedGrid(grid?.cols ?: 0, grid?.rows ?: 0)
++      }
++
++      // false hides the built-in key row (the host app draws one key row of its own).
++      Prop("accessoryBar") { view: ExpoLibghosttyView, on: Boolean? ->
++        view.setAccessoryBarEnabled(on != false)
++      }
++
++      // Takeover mode: the program lives behind a controller that scrolls for us, so drags/flings report whole lines
++      // (positive = older output) through onScrollLines instead of scrolling locally or paging.
++      Prop("remoteScroll") { view: ExpoLibghosttyView, on: Boolean? ->
++        view.setRemoteScroll(on == true)
++      }
++
++      // Takeover mouse mode (see GhosttyTerminalView.remoteMouse).
++      Prop("remoteMouse") { view: ExpoLibghosttyView, on: Boolean? ->
++        view.setRemoteMouse(on == true)
++      }
++
+       // Theme colors (ghostty config syntax); null clears to the defaults.
+       Prop("theme") { view: ExpoLibghosttyView, theme: TerminalThemeRecord? ->
+         view.setTheme(theme)
+@@ -64,3 +85,8 @@ internal class TerminalThemeRecord : Record {
+   /** Palette overrides by index (0-255) on top of ghostty's default palette. */
+   @Field val palette: List<String?>? = null
+ }
++
++internal class FixedGridRecord : Record {
++  @Field val cols: Int = 0
++  @Field val rows: Int = 0
++}
+diff --git a/android/src/main/java/expo/modules/libghostty/ExpoLibghosttyView.kt b/android/src/main/java/expo/modules/libghostty/ExpoLibghosttyView.kt
+index 2d3ed62314e39fd1ade0fa5d3d007d414c948600..2a2140f97e8dbe4bef9cf4ec71ff622300efc8b3 100644
+--- a/android/src/main/java/expo/modules/libghostty/ExpoLibghosttyView.kt
++++ b/android/src/main/java/expo/modules/libghostty/ExpoLibghosttyView.kt
+@@ -19,6 +19,11 @@ class ExpoLibghosttyView(context: Context, appContext: AppContext) :
+ 
+   private val onInput by EventDispatcher<Map<String, Any>>()
+   private val onResize by EventDispatcher<Map<String, Any>>()
++  private val onScrollLines by EventDispatcher<Map<String, Any>>()
++  private val onFontSize by EventDispatcher<Map<String, Any>>()
++  private val onTap by EventDispatcher<Map<String, Any>>()
++  private val onMouse by EventDispatcher<Map<String, Any>>()
++  private var accessoryBarEnabled = true
+ 
+   private val terminal = GhosttyTerminalView(context).also { view ->
+     view.onInputBytes = { bytes ->
+@@ -29,6 +34,10 @@ class ExpoLibghosttyView(context: Context, appContext: AppContext) :
+         )
+       )
+     }
++    view.onFontSizeChange = { dp -> onFontSize(mapOf("size" to dp)) }
++    view.onScrollLines = { lines -> onScrollLines(mapOf("lines" to lines)) }
++    view.onTap = { col, row -> onTap(mapOf("col" to col, "row" to row)) }
++    view.onMouse = { action, col, row -> onMouse(mapOf("action" to action, "col" to col, "row" to row)) }
+     view.onGridResize = { cols, rows ->
+       onResize(mapOf("cols" to cols, "rows" to rows))
+     }
+@@ -57,7 +66,7 @@ class ExpoLibghosttyView(context: Context, appContext: AppContext) :
+ 
+   private fun syncAccessoryBar(insets: WindowInsetsCompat) {
+     val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
+-    accessoryBar.visibility = if (imeVisible) VISIBLE else GONE
++    accessoryBar.visibility = if (imeVisible && accessoryBarEnabled) VISIBLE else GONE
+     // Edge-to-edge windows don't resize for the keyboard — it just covers us.
+     // Pad our bottom by the covered amount so the bar sits above the IME and
+     // the terminal shrinks (regaining the hidden rows). Hosts that already
+@@ -82,6 +91,26 @@ class ExpoLibghosttyView(context: Context, appContext: AppContext) :
+   /** Base font size in dp; applied live (the grid reflows in place). */
+   fun setFontSize(dp: Float) = terminal.setFontSize(dp)
+ 
++  /** Pin the grid to cols×rows (0×0 = fit the view); the view becomes a pannable window onto it. */
++  fun setFixedGrid(cols: Int, rows: Int) = terminal.setFixedGrid(cols, rows)
++
++  /** Hide (false) or show (true, default) the built-in key row above the keyboard. */
++  fun setAccessoryBarEnabled(on: Boolean) {
++    accessoryBarEnabled = on
++    if (!on) accessoryBar.visibility = GONE
++    rootWindowInsets?.let { syncAccessoryBar(WindowInsetsCompat.toWindowInsetsCompat(it, this)) }
++  }
++
++  /** Takeover: drags and flings report whole lines through onScrollLines instead of scrolling locally. */
++  fun setRemoteScroll(on: Boolean) {
++    terminal.remoteScroll = on
++  }
++
++  /** Takeover mouse mode: one finger becomes press / drag / release reports through onMouse. */
++  fun setRemoteMouse(on: Boolean) {
++    terminal.remoteMouse = on
++  }
++
+   /** Apply theme colors; a null record clears back to the defaults. */
+   internal fun setTheme(theme: TerminalThemeRecord?) = terminal.setTheme(
+     foreground = theme?.foreground,
+diff --git a/android/src/main/java/expo/modules/libghostty/GhosttyTerminalView.kt b/android/src/main/java/expo/modules/libghostty/GhosttyTerminalView.kt
+index 9d6ad1671c843b7cd75e08639906a9065b984210..23d16ca4dde130f40fa8fd714a04e2f3d9e02bb2 100644
+--- a/android/src/main/java/expo/modules/libghostty/GhosttyTerminalView.kt
++++ b/android/src/main/java/expo/modules/libghostty/GhosttyTerminalView.kt
+@@ -4,6 +4,8 @@ import android.app.AlertDialog
+ import android.content.ClipData
+ import android.content.ClipboardManager
+ import android.content.Context
++import android.content.Intent
++import android.net.Uri
+ import android.graphics.Bitmap
+ import android.graphics.Canvas
+ import android.graphics.Paint
+@@ -30,6 +32,7 @@ import android.view.inputmethod.InputMethodManager
+ import android.widget.OverScroller
+ import java.nio.ByteBuffer
+ import java.nio.ByteOrder
++import kotlin.math.abs
+ import kotlin.math.ceil
+ import kotlin.math.floor
+ import kotlin.math.hypot
+@@ -47,6 +50,32 @@ import kotlin.math.roundToInt
+  */
+ internal class GhosttyTerminalView(context: Context) : View(context) {
+   var onInputBytes: ((ByteArray) -> Unit)? = null
++
++  /** Takeover scroll: whole lines per gesture step (positive = older output); see [remoteScroll]. */
++  var onScrollLines: ((Int) -> Unit)? = null
++
++  /** Takeover tap: the 0-based cell (col, row) of a plain tap while [remoteScroll] is on (the app decides what a click means). */
++  var onTap: ((Int, Int) -> Unit)? = null
++
++  /**
++   * Takeover mouse mode: while [remoteMouse] is on, one finger is a mouse — every press / move to another cell /
++   * release is reported through [onMouse] (action 0 down, 1 drag, 2 up; 0-based cell) instead of scrolling,
++   * selecting or tapping.
++   */
++  var onMouse: ((Int, Int, Int) -> Unit)? = null
++  var remoteMouse = false
++  private var mouseDown = false
++  private var mouseCol = -1
++  private var mouseRow = -1
++
++  /** Called with the new size (dp) after a pinch changed the font, so the host app can remember it. */
++  var onFontSizeChange: ((Float) -> Unit)? = null
++
++  /**
++   * When true (the phone owns the pane through a controller), drags and flings are turned into [onScrollLines]
++   * instead of scrolling the local scrollback or paging the program: the controller scrolls Herdr's own viewport.
++   */
++  var remoteScroll = false
+   var onGridResize: ((cols: Int, rows: Int) -> Unit)? = null
+ 
+   /** Sticky-modifier source for accessory-bar keys and IME text (optional). */
+@@ -146,6 +175,21 @@ internal class GhosttyTerminalView(context: Context) : View(context) {
+   }
+ 
+   private var scrollAccum = 0f
++  private var pageAccum = 0f
++  private var remoteAccum = 0f
++
++  // ── Fixed grid (a window onto a larger grid) ──
++  // 0 = fit the view. When set, the grid is exactly this size (the Mac pane's) and the view shows a window of it:
++  // panX/panY are that window's top-left in grid pixels. A horizontal drag pans; vertically the window sits at
++  // the bottom and follows the cursor.
++  private var fixedCols = 0
++  private var fixedRows = 0
++  private var panX = 0f
++  private var panY = 0f
++  private var panDrag = false
++  private var panAxisLocked = false
++  private var lastCursorX = -1
++  private var lastCursorY = -1
+ 
+   // ── Scrollback state ──
+   private val scroller = OverScroller(context)
+@@ -161,6 +205,13 @@ internal class GhosttyTerminalView(context: Context) : View(context) {
+     override fun run() {
+       if (handle == 0L || !scroller.computeScrollOffset()) return
+       val y = scroller.currY
++      if (remoteScroll) {
++        remoteAccum += (y - flingLastY).toFloat()
++        flingLastY = y
++        emitRemoteLines()
++        postOnAnimation(this)
++        return
++      }
+       scrollAccum += (y - flingLastY).toFloat()
+       flingLastY = y
+       val deltaRows = (scrollAccum / cellHeight).toInt()
+@@ -177,7 +228,12 @@ internal class GhosttyTerminalView(context: Context) : View(context) {
+   private val gestureDetector = GestureDetector(
+     context,
+     object : GestureDetector.SimpleOnGestureListener() {
+-      override fun onDown(e: MotionEvent) = true
++      override fun onDown(e: MotionEvent): Boolean {
++        panAxisLocked = false
++        panDrag = false
++        remoteAccum = 0f
++        return true
++      }
+ 
+       override fun onSingleTapUp(e: MotionEvent): Boolean {
+         if (scrollbarTotal > 0 && scrollbarOffset + scrollbarLen < scrollbarTotal) {
+@@ -193,6 +249,15 @@ internal class GhosttyTerminalView(context: Context) : View(context) {
+           clearSelection()
+           return true
+         }
++        val col = ((e.x + panX) / cellWidth).toInt().coerceIn(0, cols - 1)
++        val row = ((e.y + panY) / cellHeight).toInt().coerceIn(0, rows - 1)
++        urlAt(col, row)?.let { url ->
++          offerLink(url)
++          return true
++        }
++        if (remoteScroll) {
++          onTap?.invoke(col, row)
++        }
+         requestFocus()
+         context.getSystemService(InputMethodManager::class.java)
+           ?.showSoftInput(this@GhosttyTerminalView, 0)
+@@ -201,8 +266,8 @@ internal class GhosttyTerminalView(context: Context) : View(context) {
+ 
+       override fun onLongPress(e: MotionEvent) {
+         if (handle == 0L || finished || scaleDetector.isInProgress) return
+-        lastPressCol = (e.x / cellWidth).toInt().coerceIn(0, cols - 1)
+-        lastPressRow = (e.y / cellHeight).toInt().coerceIn(0, rows - 1)
++        lastPressCol = ((e.x + panX) / cellWidth).toInt().coerceIn(0, cols - 1)
++        lastPressRow = ((e.y + panY) / cellHeight).toInt().coerceIn(0, rows - 1)
+         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+         selectionMode = GhosttyVt.nativeSelectWord(handle, lastPressCol, lastPressRow)
+         scheduleFrame()
+@@ -225,6 +290,41 @@ internal class GhosttyTerminalView(context: Context) : View(context) {
+         distanceY: Float
+       ): Boolean {
+         if (handle == 0L || scaleDetector.isInProgress) return false
++        // A pinned grid wider than the view: a mostly-horizontal drag pans the window instead of paging.
++        if (fixedCols > 0 && maxPanX() > 0f) {
++          if (!panAxisLocked) {
++            panAxisLocked = true
++            panDrag = abs(distanceX) > abs(distanceY)
++          }
++          if (panDrag) {
++            panX = (panX + distanceX).coerceIn(0f, maxPanX())
++            invalidate()
++            return true
++          }
++        }
++        // Takeover: follow the finger line by line; the controller scrolls the program's own viewport.
++        if (remoteScroll) {
++          remoteAccum += distanceY
++          emitRemoteLines()
++          return true
++        }
++        // Nothing to scroll locally (an inline Agent TUI keeps its history on the server, a
++        // full-screen program has no scrollback): turn the drag into PageUp/PageDown so the
++        // program scrolls its own pages. Finger down = older = PageUp, as with local scrollback.
++        if (scrollbarTotal <= scrollbarLen) {
++          pageAccum += distanceY
++          val pageStep = cellHeight * PAGE_SWIPE_ROWS
++          while (pageAccum >= pageStep) {
++            pageAccum -= pageStep
++            onInputBytes?.invoke(PAGE_DOWN_BYTES)
++          }
++          while (pageAccum <= -pageStep) {
++            pageAccum += pageStep
++            onInputBytes?.invoke(PAGE_UP_BYTES)
++          }
++          return true
++        }
++        pageAccum = 0f
+         scrollAccum += distanceY
+         val deltaRows = (scrollAccum / cellHeight).toInt()
+         if (deltaRows != 0) {
+@@ -243,6 +343,16 @@ internal class GhosttyTerminalView(context: Context) : View(context) {
+         velocityY: Float
+       ): Boolean {
+         if (handle == 0L || scaleDetector.isInProgress) return false
++        if (panDrag) return true
++        if (remoteScroll) {
++          // Momentum for takeover scrolling: the same fling curve, spent as lines.
++          flingLastY = 0
++          scroller.fling(0, 0, 0, -velocityY.toInt(), 0, 0, Int.MIN_VALUE, Int.MAX_VALUE)
++          postOnAnimation(flingRunnable)
++          return true
++        }
++        // No momentum when the drag paged the program instead (see onScroll).
++        if (scrollbarTotal <= scrollbarLen) return true
+         // Finger up (negative velocity) scrolls content down: invert.
+         flingLastY = 0
+         scroller.fling(0, 0, 0, -velocityY.toInt(), 0, 0, Int.MIN_VALUE, Int.MAX_VALUE)
+@@ -271,6 +381,7 @@ internal class GhosttyTerminalView(context: Context) : View(context) {
+         if (steps != 0) {
+           pinchLastScale += steps * PINCH_SCALE_STEP
+           setFontSize(fontSizeDp + steps)
++          onFontSizeChange?.invoke(fontSizeDp)
+         }
+         return true
+       }
+@@ -287,6 +398,64 @@ internal class GhosttyTerminalView(context: Context) : View(context) {
+     textSize = fontSizeDp * resources.displayMetrics.density
+   }
+ 
++  /** Spend the accumulated drag distance as whole lines (finger down = older = positive). */
++  private fun emitRemoteLines() {
++    val rows = (remoteAccum / cellHeight).toInt()
++    if (rows != 0) {
++      remoteAccum -= rows * cellHeight
++      onScrollLines?.invoke(-rows)
++    }
++  }
++
++  /** Pin the grid to cols×rows (the view becomes a pannable window onto it); 0×0 goes back to fitting the view. */
++  fun setFixedGrid(newCols: Int, newRows: Int) {
++    val cols = if (newCols > 0 && newRows > 0) newCols else 0
++    val rows = if (cols > 0) newRows else 0
++    if (cols == fixedCols && rows == fixedRows) return
++    fixedCols = cols
++    fixedRows = rows
++    panX = 0f
++    panY = Float.MAX_VALUE
++    lastCursorX = -1
++    lastCursorY = -1
++    if (selectionMode || actionMode != null) clearSelection()
++    updateGridGeometry(force = true)
++  }
++
++  private fun maxPanX() = max(0f, cols * cellWidth - width)
++  private fun maxPanY() = max(0f, (rows * cellHeight - height).toFloat())
++
++  private fun clampPan() {
++    if (fixedCols == 0) {
++      panX = 0f
++      panY = 0f
++      return
++    }
++    panX = panX.coerceIn(0f, maxPanX())
++    panY = panY.coerceIn(0f, maxPanY())
++  }
++
++  /** Keep the cursor inside the window after it moved (typing, output); a still cursor leaves a manual pan alone. */
++  private fun followCursor() {
++    if (fixedCols == 0 || cursorX < 0 || cursorY < 0) return
++    val moved = cursorX != lastCursorX || cursorY != lastCursorY
++    lastCursorX = cursorX
++    lastCursorY = cursorY
++    val top = (cursorY * cellHeight).toFloat()
++    val bottom = top + cellHeight
++    if (bottom > panY + height) panY = bottom - height
++    if (top < panY) panY = top
++    if (moved) {
++      val left = cursorX * cellWidth
++      val right = left + cellWidth
++      // A cursor that fits in the first screenful brings the window home (a new prompt line); otherwise keep it visible.
++      if (right <= width) panX = 0f
++      else if (right > panX + width) panX = right - width
++      else if (left < panX) panX = left
++    }
++    clampPan()
++  }
++
+   /**
+    * Base font size in dp (default 14, clamped to 4–64 like iOS); pinch-to-zoom
+    * steps from the current value. Content reflows in place — libghostty-vt
+@@ -449,8 +618,8 @@ internal class GhosttyTerminalView(context: Context) : View(context) {
+ 
+   private fun updateGridGeometry(force: Boolean) {
+     if (width <= 0 || height <= 0 || handle == 0L) return
+-    val newCols = max(2, floor(width / cellWidth).toInt())
+-    val newRows = max(2, height / cellHeight)
++    val newCols = if (fixedCols > 0) fixedCols else max(2, floor(width / cellWidth).toInt())
++    val newRows = if (fixedRows > 0) fixedRows else max(2, height / cellHeight)
+     val changed = newCols != cols || newRows != rows
+     cols = newCols
+     rows = newRows
+@@ -459,6 +628,10 @@ internal class GhosttyTerminalView(context: Context) : View(context) {
+       allocateGridBuffers()
+       onGridResize?.invoke(cols, rows)
+     }
++    // The window moved (keyboard, rotation, font): sit at the bottom again, then keep the cursor in view.
++    if (fixedCols > 0) panY = Float.MAX_VALUE
++    clampPan()
++    followCursor()
+     scheduleFrame()
+   }
+ 
+@@ -519,6 +692,7 @@ internal class GhosttyTerminalView(context: Context) : View(context) {
+     cursorBlinks = buf.int != 0
+     cursorColor = buf.int
+     syncBlinkTimer()
++    followCursor()
+ 
+     if (dirtyKind == DIRTY_FULL) canvas.drawColor(defaultBg)
+     repeat(rowCount) { drawRowRecord(buf, canvas, snapCols) }
+@@ -603,6 +777,75 @@ internal class GhosttyTerminalView(context: Context) : View(context) {
+       .show()
+   }
+ 
++  // ── Links ──
++
++  private fun cellText(col: Int, row: Int): String {
++    if (!GhosttyVt.nativeSetSelection(handle, col, row, col, row)) return ""
++    return GhosttyVt.nativeSelectionText(handle)?.toString(Charsets.UTF_8) ?: ""
++  }
++
++  /** The non-blank run of cells around (col,row), following a run that touches the right/left edge onto the next/previous row. */
++  private fun tokenAt(col: Int, row: Int): String {
++    if (cellText(col, row).isEmpty()) return ""
++    var start = col
++    while (start > 0 && cellText(start - 1, row).isNotEmpty()) start--
++    var end = col
++    while (end < cols - 1 && cellText(end + 1, row).isNotEmpty()) end++
++    GhosttyVt.nativeSetSelection(handle, start, row, end, row)
++    val parts = ArrayDeque<String>()
++    parts.addLast(GhosttyVt.nativeSelectionText(handle)?.toString(Charsets.UTF_8) ?: "")
++    // A long URL wraps: carry on while the run reaches the edge and the neighbouring row continues it.
++    var down = row
++    var tail = end
++    while (tail == cols - 1 && down + 1 < rows && parts.size < LINK_MAX_ROWS && cellText(0, down + 1).isNotEmpty()) {
++      down++
++      var e = 0
++      while (e < cols - 1 && cellText(e + 1, down).isNotEmpty()) e++
++      GhosttyVt.nativeSetSelection(handle, 0, down, e, down)
++      parts.addLast(GhosttyVt.nativeSelectionText(handle)?.toString(Charsets.UTF_8) ?: "")
++      tail = e
++    }
++    var up = row
++    var head = start
++    while (head == 0 && up > 0 && parts.size < LINK_MAX_ROWS && cellText(cols - 1, up - 1).isNotEmpty()) {
++      up--
++      var s = cols - 1
++      while (s > 0 && cellText(s - 1, up).isNotEmpty()) s--
++      GhosttyVt.nativeSetSelection(handle, s, up, cols - 1, up)
++      parts.addFirst(GhosttyVt.nativeSelectionText(handle)?.toString(Charsets.UTF_8) ?: "")
++      head = s
++    }
++    return parts.joinToString("")
++  }
++
++  /** An http(s) URL under a tap, or null. Leaves the grid's selection exactly as it found it (none). */
++  private fun urlAt(col: Int, row: Int): String? {
++    if (handle == 0L || selectionMode) return null
++    return try {
++      LINK_REGEX.find(tokenAt(col, row))?.value?.trimEnd(*LINK_TRAILING)?.takeIf { it.length > 8 }
++    } finally {
++      GhosttyVt.nativeClearSelection(handle)
++      scheduleFrame()
++    }
++  }
++
++  private fun offerLink(url: String) {
++    AlertDialog.Builder(context)
++      .setTitle("Open link?")
++      .setMessage(url)
++      .setPositiveButton("Open") { _, _ ->
++        try {
++          context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
++        } catch (_: Exception) {
++        }
++      }
++      .setNeutralButton("Copy") { _, _ ->
++        context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("link", url))
++      }
++      .setNegativeButton(android.R.string.cancel, null)
++      .show()
++  }
++
+   private fun sendPaste(bytes: ByteArray) {
+     val encoded = GhosttyVt.nativeEncodePaste(handle, bytes) ?: return
+     if (selectionMode) clearSelection() else actionMode?.finish()
+@@ -645,7 +888,7 @@ internal class GhosttyTerminalView(context: Context) : View(context) {
+         }
+ 
+         override fun onGetContentRect(mode: ActionMode, view: View, outRect: Rect) {
+-          outRect.set(selectionContentRect())
++          outRect.set(selectionContentRect().apply { offset(-panX.toInt(), -panY.toInt()) })
+         }
+       },
+       ActionMode.TYPE_FLOATING
+@@ -674,7 +917,9 @@ internal class GhosttyTerminalView(context: Context) : View(context) {
+   }
+ 
+   /** Returns which handle (start/end) is under the touch, arming the drag anchor. */
+-  private fun hitTestHandle(x: Float, y: Float): Int {
++  private fun hitTestHandle(viewX: Float, viewY: Float): Int {
++    val x = viewX + panX
++    val y = viewY + panY
+     val bounds = selectionBounds() ?: return HANDLE_NONE
+     val (top, topCol, bottom, bottomCol) = bounds
+     val slop = HANDLE_HIT_SLOP_DP * resources.displayMetrics.density
+@@ -703,8 +948,8 @@ internal class GhosttyTerminalView(context: Context) : View(context) {
+ 
+   private fun dragSelection(x: Float, y: Float) {
+     if (handle == 0L) return
+-    val col = (x / cellWidth).toInt().coerceIn(0, cols - 1)
+-    val row = ((y / cellHeight).toInt() - dragBiasRows).coerceIn(0, rows - 1)
++    val col = ((x + panX) / cellWidth).toInt().coerceIn(0, cols - 1)
++    val row = (((y + panY) / cellHeight).toInt() - dragBiasRows).coerceIn(0, rows - 1)
+     GhosttyVt.nativeSetSelection(handle, dragAnchorCol, dragAnchorRow, col, row)
+     magnifier?.show(x, y)
+     scheduleFrame()
+@@ -884,9 +1129,12 @@ internal class GhosttyTerminalView(context: Context) : View(context) {
+ 
+   override fun onDraw(canvas: Canvas) {
+     canvas.drawColor(defaultBg)
++    canvas.save()
++    canvas.translate(-panX, -panY)
+     bitmap?.let { canvas.drawBitmap(it, 0f, 0f, null) }
+     drawCursor(canvas)
+     drawSelectionHandles(canvas)
++    canvas.restore()
+     drawScrollIndicator(canvas)
+     drawJumpToBottomChip(canvas)
+   }
+@@ -972,8 +1220,33 @@ internal class GhosttyTerminalView(context: Context) : View(context) {
+ 
+   // ── Input ──
+ 
++  private fun handleMouseTouch(event: MotionEvent): Boolean {
++    val col = ((event.x + panX) / cellWidth).toInt().coerceIn(0, cols - 1)
++    val row = ((event.y + panY) / cellHeight).toInt().coerceIn(0, rows - 1)
++    when (event.actionMasked) {
++      MotionEvent.ACTION_DOWN -> {
++        mouseDown = true
++        mouseCol = col
++        mouseRow = row
++        parent?.requestDisallowInterceptTouchEvent(true)
++        onMouse?.invoke(0, col, row)
++      }
++      MotionEvent.ACTION_MOVE -> if (mouseDown && (col != mouseCol || row != mouseRow)) {
++        mouseCol = col
++        mouseRow = row
++        onMouse?.invoke(1, col, row)
++      }
++      MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (mouseDown) {
++        mouseDown = false
++        onMouse?.invoke(2, col, row)
++      }
++    }
++    return true
++  }
++
+   override fun onTouchEvent(event: MotionEvent): Boolean {
+     if (event.actionMasked == MotionEvent.ACTION_DOWN) scroller.abortAnimation()
++    if (remoteMouse && (mouseDown || event.pointerCount == 1)) return handleMouseTouch(event)
+     scaleDetector.onTouchEvent(event)
+     if (scaleDetector.isInProgress) {
+       if (draggingHandle != HANDLE_NONE) {
+@@ -1096,6 +1369,9 @@ internal class GhosttyTerminalView(context: Context) : View(context) {
+ 
+   private companion object {
+     const val FONT_SIZE_DP = 14f
++    const val LINK_MAX_ROWS = 4
++    val LINK_REGEX = Regex("""https?://[^\s<>"'`]+""")
++    val LINK_TRAILING = charArrayOf('.', ',', ';', ':', '!', '?', ')', ']', '}', '>', '\'', '"')
+     // Same bounds and step as the iOS pinch-zoom (UITerminalView).
+     const val MIN_FONT_SIZE_DP = 4f
+     const val MAX_FONT_SIZE_DP = 64f
+@@ -1103,6 +1379,10 @@ internal class GhosttyTerminalView(context: Context) : View(context) {
+     const val INITIAL_COLS = 80
+     const val INITIAL_ROWS = 24
+     const val MAX_SCROLLBACK = 10_000L
++    // One PageUp/PageDown per this many rows of drag when there is no local scrollback.
++    const val PAGE_SWIPE_ROWS = 6
++    val PAGE_UP_BYTES = byteArrayOf(0x1b, '['.code.toByte(), '5'.code.toByte(), '~'.code.toByte())
++    val PAGE_DOWN_BYTES = byteArrayOf(0x1b, '['.code.toByte(), '6'.code.toByte(), '~'.code.toByte())
+     const val BLINK_INTERVAL_MS = 600L
+     const val SYMBOLS_FONT_ASSET = "SymbolsNerdFontMono-Regular.ttf"
+ 
+diff --git a/build/ExpoLibghostty.types.d.ts b/build/ExpoLibghostty.types.d.ts
+index 0969f137ea5482158fb577ef3eee6c9192b1da2e..3734c5c986c886791ecbf1d36cbd204bc92bfcc7 100644
+--- a/build/ExpoLibghostty.types.d.ts
++++ b/build/ExpoLibghostty.types.d.ts
+@@ -46,6 +46,50 @@ export type TerminalViewProps = {
+      * the terminal surface, resetting the grid — set it before mounting.
+      */
+     fontSize?: number;
++    /**
++     * Android: pin the grid to cols×rows (the program's own size, not what the
++     * view fits); the view becomes a window onto it — horizontal drags pan, the
++     * window sits at the bottom and follows the cursor. Omit to fit the view.
++     */
++    fixedGrid?: {
++        cols: number;
++        rows: number;
++    };
++    /**
++     * Android: takeover scrolling. Drags and flings report whole lines through
++     * onScrollLines (positive = older output) instead of scrolling locally or
++     * paging the program; the owner of the program's PTY does the scrolling.
++     */
++    remoteScroll?: boolean;
++    /** Android: false hides the built-in key row above the keyboard (default true). */
++    accessoryBar?: boolean;
++    /** Android: the font size (dp) after a pinch-to-zoom step. */
++    onFontSize?: (event: {
++        nativeEvent: {
++            size: number;
++        };
++    }) => void;
++    onScrollLines?: (event: {
++        nativeEvent: {
++            lines: number;
++        };
++    }) => void;
++    /** Android, takeover: one finger is a mouse — onMouse reports action 0 down / 1 drag / 2 up at a 0-based cell. */
++    remoteMouse?: boolean;
++    onMouse?: (event: {
++        nativeEvent: {
++            action: number;
++            col: number;
++            row: number;
++        };
++    }) => void;
++    /** Android, with remoteScroll: a plain tap's 0-based cell. */
++    onTap?: (event: {
++        nativeEvent: {
++            col: number;
++            row: number;
++        };
++    }) => void;
+     /**
+      * Theme colors. Android applies them per view; on iOS the theme is
+      * app-wide (all terminal views share the controller's config). Omit or
+diff --git a/src/ExpoLibghostty.types.ts b/src/ExpoLibghostty.types.ts
+index cbd0ab4128aa22b18c65f633dd81cbd0d737f51b..76a1f2587e045e3c4a324b3876930774d63ae0ce 100644
+--- a/src/ExpoLibghostty.types.ts
++++ b/src/ExpoLibghostty.types.ts
+@@ -51,6 +51,28 @@ export type TerminalViewProps = {
+    * the terminal surface, resetting the grid — set it before mounting.
+    */
+   fontSize?: number;
++  /**
++   * Android: pin the grid to cols×rows (the program's own size, not what the
++   * view fits); the view becomes a window onto it — horizontal drags pan, the
++   * window sits at the bottom and follows the cursor. Omit to fit the view.
++   */
++  fixedGrid?: { cols: number; rows: number };
++  /**
++   * Android: takeover scrolling. Drags and flings report whole lines through
++   * onScrollLines (positive = older output) instead of scrolling locally or
++   * paging the program; the owner of the program's PTY does the scrolling.
++   */
++  remoteScroll?: boolean;
++  /** Android: false hides the built-in key row above the keyboard (default true). */
++  accessoryBar?: boolean;
++  /** Android: the font size (dp) after a pinch-to-zoom step. */
++  onFontSize?: (event: { nativeEvent: { size: number } }) => void;
++  onScrollLines?: (event: { nativeEvent: { lines: number } }) => void;
++  /** Android, takeover: one finger is a mouse — onMouse reports action 0 down / 1 drag / 2 up at a 0-based cell. */
++  remoteMouse?: boolean;
++  onMouse?: (event: { nativeEvent: { action: number; col: number; row: number } }) => void;
++  /** Android, with remoteScroll: a plain tap's 0-based cell. */
++  onTap?: (event: { nativeEvent: { col: number; row: number } }) => void;
+   /**
+    * Theme colors. Android applies them per view; on iOS the theme is
+    * app-wide (all terminal views share the controller's config). Omit or
