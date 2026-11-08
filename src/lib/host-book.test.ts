@@ -25,7 +25,7 @@ import {
 
 const fp = (n: number) => n.toString(16).padStart(64, '0');
 const conn = (n: number, over: Partial<HostConnectionV3> = {}): HostConnectionV3 => ({
-  host: `192.168.5.${n}`,
+  host: `192.168.0.${n}`,
   port: 7788,
   fingerprint: fp(n),
   token: `token-${n}`,
@@ -40,16 +40,16 @@ describe('host book', () => {
     const book = pairHost(emptyBook(), conn(1), at(1000));
     expect(book.activeId).toBe(fp(1));
     expect(book.hosts).toHaveLength(1);
-    expect(book.hosts[0]).toMatchObject({ pairedAt: 1000, lastConnectedAt: 1000, network: 'wifi', addresses: [{ host: '192.168.5.1', port: 7788, lastUsedAt: 1000 }] });
+    expect(book.hosts[0]).toMatchObject({ pairedAt: 1000, lastConnectedAt: 1000, network: 'wifi', addresses: [{ host: '192.168.0.1', port: 7788, lastUsedAt: 1000 }] });
   });
 
   it('merges the same Mac paired over a new address into one card and keeps the old address', () => {
     let book = pairHost(emptyBook(), conn(1), at(1000));
-    book = pairHost(book, conn(1, { host: '100.88.0.1', token: 'fresh', deviceId: 'device-9' }), at(5000, 'cellular'));
+    book = pairHost(book, conn(1, { host: '100.101.102.1', token: 'fresh', deviceId: 'device-9' }), at(5000, 'cellular'));
     expect(book.hosts).toHaveLength(1);
     const record = book.hosts[0]!;
-    expect(record).toMatchObject({ host: '100.88.0.1', token: 'fresh', deviceId: 'device-9', pairedAt: 1000, lastConnectedAt: 5000, network: 'cellular', name: 'Mac 1' });
-    expect(record.addresses.map((a) => a.host)).toEqual(['100.88.0.1', '192.168.5.1']);
+    expect(record).toMatchObject({ host: '100.101.102.1', token: 'fresh', deviceId: 'device-9', pairedAt: 1000, lastConnectedAt: 5000, network: 'cellular', name: 'Mac 1' });
+    expect(record.addresses.map((a) => a.host)).toEqual(['100.101.102.1', '192.168.0.1']);
   });
 
   it('keeps the stored name when the new link carries none, and caps the address history', () => {
@@ -70,10 +70,10 @@ describe('host book', () => {
 
   it('touchConnected stamps time and network and moves the answering address first', () => {
     let book = pairHost(emptyBook(), conn(1), at(1));
-    book = pairHost(book, conn(1, { host: '100.88.0.1' }), at(2));
+    book = pairHost(book, conn(1, { host: '100.101.102.1' }), at(2));
     book = touchConnected(book, fp(1), at(9, 'wifi'));
     expect(book.hosts[0]).toMatchObject({ lastConnectedAt: 9, network: 'wifi' });
-    expect(book.hosts[0]!.addresses[0]).toEqual({ host: '100.88.0.1', port: 7788, lastUsedAt: 9 });
+    expect(book.hosts[0]!.addresses[0]).toEqual({ host: '100.101.102.1', port: 7788, lastUsedAt: 9 });
     expect(touchConnected(book, 'nope', at(10))).toBe(book);
   });
 
@@ -130,11 +130,11 @@ describe('host book', () => {
   it('judges the route from the address alone', () => {
     expect(hostRoute('127.0.0.1')).toBe('usb');
     expect(hostRoute('localhost')).toBe('usb');
-    expect(hostRoute('192.168.5.59')).toBe('lan');
+    expect(hostRoute('192.168.0.59')).toBe('lan');
     expect(hostRoute('10.0.0.7')).toBe('lan');
     expect(hostRoute('172.20.1.1')).toBe('lan');
     expect(hostRoute('172.32.1.1')).toBe('other');
-    expect(hostRoute('100.88.0.1')).toBe('tailscale');
+    expect(hostRoute('100.101.102.1')).toBe('tailscale');
     expect(hostRoute('100.128.0.1')).toBe('other');
     expect(hostRoute('fd7a:115c:a1e0::1')).toBe('tailscale');
     expect(hostRoute('mac.example.com')).toBe('other');
@@ -146,44 +146,44 @@ describe('address recovery', () => {
   const ctx = { now: 5000, network: 'wifi' as const };
 
   it('lists earlier addresses newest first, without the current one', () => {
-    let book = pairHost(emptyBook(), { ...base, host: '192.168.139.3' }, { now: 1000, network: 'wifi' });
-    book = pairHost(book, { ...base, host: '192.168.5.59' }, { now: 2000, network: 'wifi' });
-    book = pairHost(book, { ...base, host: '100.88.0.1' }, { now: 3000, network: 'wifi' });
+    let book = pairHost(emptyBook(), { ...base, host: '192.168.64.3' }, { now: 1000, network: 'wifi' });
+    book = pairHost(book, { ...base, host: '192.168.0.59' }, { now: 2000, network: 'wifi' });
+    book = pairHost(book, { ...base, host: '100.101.102.1' }, { now: 3000, network: 'wifi' });
     const record = book.hosts[0]!;
-    expect(fallbackAddresses(record).map((a) => a.host)).toEqual(['192.168.5.59', '192.168.139.3']);
+    expect(fallbackAddresses(record).map((a) => a.host)).toEqual(['192.168.0.59', '192.168.64.3']);
   });
 
   it('adopting an earlier address makes it current and keeps the token and card', () => {
-    let book = pairHost(emptyBook(), { ...base, host: '192.168.5.59' }, { now: 1000, network: 'wifi' });
-    book = pairHost(book, { ...base, host: '100.88.0.1' }, { now: 2000, network: 'wifi' });
-    const next = adoptAddress(book, hostId(base), { host: '192.168.5.59', port: 7788 }, ctx);
+    let book = pairHost(emptyBook(), { ...base, host: '192.168.0.59' }, { now: 1000, network: 'wifi' });
+    book = pairHost(book, { ...base, host: '100.101.102.1' }, { now: 2000, network: 'wifi' });
+    const next = adoptAddress(book, hostId(base), { host: '192.168.0.59', port: 7788 }, ctx);
     const record = next.hosts[0]!;
     expect(next.hosts).toHaveLength(1);
-    expect([record.host, record.port, record.token]).toEqual(['192.168.5.59', 7788, base.token]);
-    expect(record.addresses.map((a) => a.host)).toEqual(['192.168.5.59', '100.88.0.1']);
+    expect([record.host, record.port, record.token]).toEqual(['192.168.0.59', 7788, base.token]);
+    expect(record.addresses.map((a) => a.host)).toEqual(['192.168.0.59', '100.101.102.1']);
     expect(record.lastConnectedAt).toBe(5000);
     expect(adoptAddress(book, 'missing', { host: 'x', port: 1 }, ctx)).toBe(book);
   });
 
   it('mergeAdvertised files the Mac-reported addresses so the next race can reach a changed one', () => {
-    let book = pairHost(emptyBook(), { ...base, host: '192.168.5.59' }, { now: 1000, network: 'wifi' });
+    let book = pairHost(emptyBook(), { ...base, host: '192.168.0.59' }, { now: 1000, network: 'wifi' });
     book = pairHost(book, { ...base, host: '10.8.0.1' }, { now: 2000, network: 'wifi' }); // the Mac has since moved; 10.8.0.1 no longer serves
     const next = mergeAdvertised(book, hostId(base), [{ host: '192.168.1.10', port: 7788 }]);
     const record = next.hosts[0]!;
     expect(record.addresses.map((a) => [a.host, a.lastUsedAt])).toEqual([
       ['10.8.0.1', 2000],
       ['192.168.1.10', 0], // advertised, never answered yet — kept ahead of old answers
-      ['192.168.5.59', 1000],
+      ['192.168.0.59', 1000],
     ]);
     // A later probe on the fresh address promotes it; merging never does.
     expect(record.host).toBe('10.8.0.1');
-    expect(mergeAdvertised(next, hostId(base), [{ host: '192.168.1.10', port: 7788 }, { host: '192.168.5.59', port: 7788 }])).toBe(next);
+    expect(mergeAdvertised(next, hostId(base), [{ host: '192.168.1.10', port: 7788 }, { host: '192.168.0.59', port: 7788 }])).toBe(next);
     expect(mergeAdvertised(book, 'missing', [{ host: 'x', port: 1 }])).toBe(book);
     expect(mergeAdvertised(book, hostId(base), [])).toBe(book);
   });
 
   it('mergeAdvertised never evicts the current address and drops the stalest history at the cap', () => {
-    let book = pairHost(emptyBook(), { ...base, host: '192.168.5.59' }, { now: 1000, network: 'wifi' });
+    let book = pairHost(emptyBook(), { ...base, host: '192.168.0.59' }, { now: 1000, network: 'wifi' });
     for (let i = 0; i < MAX_ADDRESSES - 1; i++) book = pairHost(book, { ...base, host: `10.0.0.${i + 1}` }, { now: 2000 + i, network: 'wifi' });
     const next = mergeAdvertised(book, hostId(base), [
       { host: '192.168.1.10', port: 7788 },
@@ -205,9 +205,9 @@ describe('relay registration', () => {
     const record = book.hosts[0]!;
     expect(record.relay).toEqual(RELAY);
     expect(record.lastRoute).toBe('relay');
-    expect(record.addresses).toEqual([{ host: '192.168.5.1', port: 7788, lastUsedAt: 1000 }]);
+    expect(record.addresses).toEqual([{ host: '192.168.0.1', port: 7788, lastUsedAt: 1000 }]);
     expect(record.addresses.some((a) => JSON.stringify(a).includes(RELAY.secret))).toBe(false);
-    expect(toConnection(record)).toMatchObject({ host: '192.168.5.1', relay: RELAY });
+    expect(toConnection(record)).toMatchObject({ host: '192.168.0.1', relay: RELAY });
   });
 
   it('re-pairing keeps the registered relay and updates it when the new link carries one', () => {
@@ -215,7 +215,7 @@ describe('relay registration', () => {
     const updated = { url: 'https://relay2.example.com', secret: 'relsecret_FEDCBA9876543210' };
     book = pairHost(book, conn(1, { relay: updated }), at(2));
     expect(book.hosts[0]!.relay).toEqual(updated);
-    book = pairHost(book, conn(1, { host: '100.88.0.1', name: undefined }), at(3));
+    book = pairHost(book, conn(1, { host: '100.101.102.1', name: undefined }), at(3));
     expect(book.hosts[0]!.relay).toEqual(updated); // a direct re-pair keeps the registration
   });
 
@@ -233,7 +233,7 @@ describe('relay registration', () => {
     expect(book.hosts[0]).toMatchObject({ lastRoute: 'relay', lastConnectedAt: 5000, network: 'cellular' });
     expect(book.hosts[0]!.addresses).toEqual(before);
     expect(toConnection(book.hosts[0]!)).toMatchObject({ relay: RELAY });
-    book = adoptAddress(book, fp(1), { host: '192.168.5.1', port: 7788 }, { now: 6000, network: 'wifi' });
+    book = adoptAddress(book, fp(1), { host: '192.168.0.1', port: 7788 }, { now: 6000, network: 'wifi' });
     expect(book.hosts[0]!.lastRoute).toBeUndefined();
     expect(toConnection(book.hosts[0]!).relay).toBeUndefined(); // direct serving, relay still registered
     expect(book.hosts[0]!.relay).toEqual(RELAY);
@@ -248,7 +248,7 @@ describe('relay registration', () => {
   it('judges the card route: relay while lastRoute says so, else from the address', () => {
     const record = pairHost(emptyBook(), withRelay(1), at(1)).hosts[0]!;
     expect(recordRoute(record)).toBe('relay');
-    expect(recordRoute({ host: '100.88.0.1', lastRoute: undefined })).toBe('tailscale');
+    expect(recordRoute({ host: '100.101.102.1', lastRoute: undefined })).toBe('tailscale');
   });
 });
 

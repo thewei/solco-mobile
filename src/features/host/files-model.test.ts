@@ -58,7 +58,7 @@ describe('files model', () => {
   });
   it('says why a search failed: no engine has no retry, a lost connection and anything else do', () => {
     expect(searchFailure(new HostV3Error('http', 'x', { status: 502, code: 'search_unavailable' }), 'Mac')).toMatchObject({ title: 'Search unavailable', retry: false });
-    expect(searchFailure(new HostV3Error('transport', 'timed out'), 'Wilson-MacBook-Pro')).toEqual({ title: 'Search failed', text: 'Can’t reach Wilson-MacBook-Pro. Check the connection, then try again.', retry: true });
+    expect(searchFailure(new HostV3Error('transport', 'timed out'), 'Test-Mac')).toEqual({ title: 'Search failed', text: 'Can’t reach Test-Mac. Check the connection, then try again.', retry: true });
     expect(searchFailure(new HostV3Error('http', 'x', { status: 502, code: 'files_failed' }), 'Mac')).toMatchObject({ title: 'Search failed', retry: true });
     expect(searchFailure(new Error('boom'), 'Mac')).toMatchObject({ retry: true });
   });

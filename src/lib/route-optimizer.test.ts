@@ -32,10 +32,10 @@ describe('p2pAfterTrouble', () => {
 });
 
 describe('describeRouteChange', () => {
-  const lan = { route: 'direct' as const, via: 'LAN', address: '192.168.5.59' };
+  const lan = { route: 'direct' as const, via: 'LAN', address: '192.168.0.59' };
   const relay = { route: 'relay' as const };
   it('says what changed, with latency when known', () => {
-    expect(describeRouteChange(relay, lan, 12.4)).toBe('Back on LAN (192.168.5.59) · 12 ms');
+    expect(describeRouteChange(relay, lan, 12.4)).toBe('Back on LAN (192.168.0.59) · 12 ms');
     expect(describeRouteChange(lan, relay)).toBe('Direct path unavailable — now using the relay');
     expect(describeRouteChange(lan, { route: 'p2p' })).toBe('Switched to P2P');
     expect(describeRouteChange(relay, { route: 'p2p' }, 40)).toBe('Back on P2P · 40 ms');
