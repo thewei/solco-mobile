@@ -12,7 +12,7 @@ const agent = (paneId: string, status: string, lastActiveMs?: number, title?: st
 });
 
 const tree = (...panes: TreePane[]): TreeWorkspace[] => [
-  { id: 'w1', label: 'wh-studio', status: 'ok', tabs: [{ id: 'tab1', label: 'main', status: 'ok', panes }] },
+  { id: 'w1', label: 'acme', status: 'ok', tabs: [{ id: 'tab1', label: 'main', status: 'ok', panes }] },
 ];
 
 describe('buildWidgetData', () => {
@@ -32,7 +32,7 @@ describe('buildWidgetData', () => {
 
   it('uses the Mac sidebar title and the workspace label', () => {
     const [row] = buildWidgetData(tree(agent('a', 'blocked', 1, 'Fix the build')), 'w1', true).rows;
-    expect(row).toMatchObject({ title: 'Fix the build', caption: 'wh-studio' });
+    expect(row).toMatchObject({ title: 'Fix the build', caption: 'acme' });
   });
 
   it('skips plain terminals and answers with no rows for an empty tree', () => {

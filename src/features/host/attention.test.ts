@@ -10,7 +10,7 @@ const pane = (paneId: string, status?: string, lastActiveMs?: number): TreePane 
 });
 
 const tree = (...panes: TreePane[]): TreeWorkspace[] => [
-  { id: 'w1', label: 'wh-studio', status: 'ok', tabs: [{ id: 'tab1', label: 'main', status: 'ok', panes }] },
+  { id: 'w1', label: 'acme', status: 'ok', tabs: [{ id: 'tab1', label: 'main', status: 'ok', panes }] },
 ];
 
 const INSTANCE = 'w1';
