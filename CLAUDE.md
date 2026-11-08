@@ -16,7 +16,8 @@ plugins/ - Expo CNG iOS scene-lifecycle compatibility plugin for SDK 54 / Xcode 
 scripts/ - dev-infrastructure scripts; sync-chat-page.mjs builds/embeds the shared Chat page; serve-web.mjs serves dist/ + same-origin /api proxy for the local PWA topology; check-design-tokens.mjs runs solco's `design/gen.mjs --check` against `src/theme/*.generated.ts` (`pnpm check:tokens`); sync-v3-fixtures.mjs copies the Go Host's golden files (`pnpm check:fixtures` / `pnpm check:chat-page` are the read-only drift checks, run locally beside the solco repo); e2e-v3.sh runs the v3 codecs against a live Go Host; android-release.sh and `android-debug.sh --install` queue their `adb install` on one machine-wide `lockf` lock (`/tmp/solco-phone-install.lock`, `PHONE_LOCK_WAIT` seconds) because the phone has a single install-confirmation dialog that concurrent sessions overwrite
 .github/ - CI: typecheck + lint + test on push/PR (the drift checks need the sibling solco repo, so they stay local)
 public/ - web-static assets served at root: PWA manifest and placeholder icons (validation-period artwork)
-docs/ - canonical mobile architecture, UX reference, roadmap, and the Web/PWA track (architecture, implementation plan, local-domain runbook)
+docs/ - [private: link into ../solco-docs] canonical mobile architecture, UX reference, roadmap, and the Web/PWA track (architecture, implementation plan, local-domain runbook)
+.agents/ - [private: link into ../solco-docs] the solco-mobile-dev / solco-mobile-install skills and device facts
 </directory>
 
 <config>
@@ -38,5 +39,7 @@ UI rule: Agent-first, phone-native, dark developer-tool surface. Semantic Conver
 Transport rule: business APIs are transport-independent. LAN/Tailscale/Relay/SSH are connection transports beneath the same Host API contract. Do not make SSH or Herdr protocol types public UI/domain contracts.
 
 Development rule: use Expo Development Builds, not Expo Go, as the production-development baseline. Custom Swift/Kotlin should use a local Expo Module unless a mature compatible library already owns the capability.
+
+Private-assets rule: **code, tests and the rules an agent obeys live here; the development record (mobile architecture, UX, roadmap, runbooks, skills, device facts, keys) lives in the private `../solco-docs`, linked in at the same paths.** Read through the link; write and commit there (`commit-docs.sh` of the `solco-docs` skill in the Solco repository), never copy it into this repository or its commit messages; every commit is authored as the user's GitHub identity. Details: `AGENTS.md` "Private assets (solco-docs)".
 
 [PROTOCOL]: 变更时更新此头部，然后检查子目录 CLAUDE.md

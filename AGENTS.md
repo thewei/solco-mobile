@@ -11,6 +11,16 @@ Before developing Solco Mobile, read:
 5. `docs/web-pwa-architecture.md` + `docs/web-pwa-local-domain.md` — Web/PWA track: architecture and the local-domain runbook (prox / serve-web / same-origin API bridge).
 6. `docs/android-development-prep.md` — Android track: toolchain state, dev-build loop, and the A04 native VT decision path.
 
+## Private assets (solco-docs)
+
+`docs/` and `.agents/` (the `solco-mobile-dev` / `solco-mobile-install` skills and their device facts) are symlinks into the **private** sibling repository `../solco-docs` (its `solco-mobile/` folder); `.gitignore` keeps them out of every commit here, and everything "Start here" names under `docs/` is read through the link as before. The rulebook is the `solco-docs` skill in the Solco repository (`../solco/.agents/skills/solco-docs/SKILL.md`); these rules apply to every session:
+
+- **Read.** A path that does not resolve means a missing link or checkout: `bash ../solco-docs/link.sh --check`, then `bash ../solco-docs/link.sh`. No `../solco-docs`: stop and tell the user; never recreate, stub or guess those files here.
+- **Write and commit.** Mobile architecture, UX and roadmap text, runbooks, skills and device facts are written through the link and committed in solco-docs (`bash ../solco/.agents/skills/solco-docs/scripts/commit-docs.sh -m "…" -- docs/…`); code, tests and rules are a separate commit here (`bash ../solco/.agents/skills/solco-commit/scripts/commit-paths.sh`). Two repositories, two commits, never `git add -A`; also check `git -C ../solco-docs status --short`. The Android keystore and every other key stay in solco-docs, never here.
+- **Authorship.** Commit as the user's GitHub identity: both scripts set it, a hand-typed `git commit` passes it (the skill has name and address). Never a placeholder name, never the personal address from the global git config.
+- **No leak back.** Nothing private goes into this repository's files, commit messages or CI: document text, device serials, adb or LAN addresses, tokens, pairing codes, keystores, home paths. `pnpm typecheck`, `pnpm lint`, `pnpm test` and CI pass on a clone without solco-docs.
+- **Publish.** Push only when asked, after the outbound scan and author check (`solco-commit`); solco-docs stays private, no force-push and no tag there.
+
 ## Product boundary
 
 - **Solco Mobile is a client of the Solco Mac Host.**
