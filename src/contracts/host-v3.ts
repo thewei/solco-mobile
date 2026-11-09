@@ -162,13 +162,20 @@ export const eventMessageSchema = z.discriminatedUnion('t', [
     name: z.string().min(1),
     runId: z.string().optional(),
   }),
-  /** An Agent's question reached (kind `ask`) or left (`resolved`) the Mac's Feedback inbox: opaque ids and the waiting count, never text. */
+  /**
+   * An Agent's question reached (kind `ask`) or left (`resolved`) the Mac's Feedback inbox: opaque ids and the waiting
+   * count; a new Ask also carries the words of its notification — project, Agent and the question's first line (the
+   * desktop notification's own text). Never the description, an answer or a path.
+   */
   z.object({
     t: z.literal('feedback'),
     kind: z.enum(['ask', 'resolved']),
     threadId: z.string().min(1),
     askId: z.string().min(1),
     waiting: z.number().int().nonnegative(),
+    project: z.string().optional(),
+    client: z.string().optional(),
+    preview: z.string().optional(),
   }),
   /** The Mac's Assistants overview moved: counts only — the phone re-reads the authoritative overview. */
   z.object({

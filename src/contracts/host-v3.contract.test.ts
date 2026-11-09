@@ -445,7 +445,7 @@ describe('v3 golden files', () => {
     });
   });
 
-  it('feedback: capability, list, thread timeline, offline, answer, errors and the content-free frame', async () => {
+  it('feedback: capability, list, thread timeline, offline, answer, errors and the frame that carries the notification words', async () => {
     expect(exact(bootstrapV3Schema, await load('bootstrap-feedback.json')).capabilities.feedback).toBe(true);
     const list = exact(feedbackSnapshotSchema, await load('feedback.json'));
     expect(list).toMatchObject({ online: true, waiting: 1, selected: '' });
@@ -462,7 +462,7 @@ describe('v3 golden files', () => {
     expect(exact(chatAckSchema, await load('feedback-ack.json'))).toEqual({ ok: true });
     expect(exact(errorBodyV3Schema, await load('error-feedback-final.json')).error.code).toBe('feedback_final');
     expect(exact(errorBodyV3Schema, await load('error-feedback-unavailable.json')).error.code).toBe('feedback_unavailable');
-    expect(exact(eventMessageSchema, await load('events-feedback.json'))).toEqual({ t: 'feedback', kind: 'ask', threadId: 't_1', askId: 'a_1', waiting: 1 });
+    expect(exact(eventMessageSchema, await load('events-feedback.json'))).toEqual({ t: 'feedback', kind: 'ask', threadId: 't_1', askId: 'a_1', waiting: 1, project: 'solco', client: 'Claude Code', preview: 'Which database should the service use?' });
   });
 
   it('automations: bootstrap capability, list and the closed-gate error', async () => {
