@@ -7,6 +7,7 @@
 // always refetched from the Host, never patched from an event.
 import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState, Platform } from 'react-native';
 
 import type { AssistantCommitmentInput, AssistantGoalAction, AssistantTaskAction, AutomationFields, AutomationOp, Automations, ChatFrame, DeviceConnectResponse, EventMessage, GitCommitRequest, GitSyncOp, GitWriteResult, Notes, NotesFileName, ProactivityInput, TreeV3 } from '@/contracts/host-v3';
 import { type AutomationFrame } from '@/features/host/automation-notice';
@@ -903,6 +904,17 @@ export function useHostQuota(enabled: boolean) {
 
 export type ChatPhase = 'connecting' | 'live' | 'reconnecting' | 'none' | 'gone';
 
+const CHAT_FRAME_CACHE_MAX = 8;
+const chatFrameCache = new Map<string, ChatFrame>();
+
+function chatFrameKey(instance: string | null, paneId: string | null): string | null {
+  return instance && paneId ? `${instance}:${paneId}` : null;
+}
+
+export function clearChatFrameCache(): void {
+  chatFrameCache.clear();
+}
+
 /**
  * Follows one pane's conversation over the chat stream. Every frame is the whole state, so a
  * reconnect needs no replay. 4409 (no readable session yet) and 4404 (pane gone) end the follow;
@@ -910,16 +922,19 @@ export type ChatPhase = 'connecting' | 'live' | 'reconnecting' | 'none' | 'gone'
  */
 export function useChatStream(instance: string | null, paneId: string | null, limit?: number) {
   const { client } = useHostV3();
-  const [phase, setPhase] = useState<ChatPhase>('connecting');
-  const [frame, setFrame] = useState<ChatFrame | null>(null);
+  const initialKey = chatFrameKey(instance, paneId);
+  const [phase, setPhase] = useState<ChatPhase>(() => (initialKey && chatFrameCache.has(initialKey) ? 'live' : 'connecting'));
+  const [frame, setFrame] = useState<ChatFrame | null>(() => (initialKey ? chatFrameCache.get(initialKey) ?? null : null));
   const attempt = useRef(0);
   const olderRef = useRef<() => void>(() => undefined);
   const older = useCallback(() => olderRef.current(), []);
 
-  // Only another conversation starts from nothing.
+  // When switching conversation, immediately serve from cache if available instead of flashing 'connecting'.
   useEffect(() => {
-    setPhase('connecting');
-    setFrame(null);
+    const k = chatFrameKey(instance, paneId);
+    const cached = k ? chatFrameCache.get(k) : null;
+    setPhase(cached ? 'live' : 'connecting');
+    setFrame(cached ?? null);
   }, [instance, paneId]);
 
   useEffect(() => {
@@ -944,6 +959,8 @@ export function useChatStream(instance: string | null, paneId: string | null, li
     const waitForConversation = () => {
       // A new agent may not have written its JSONL yet. Do not keep showing
       // the previous session's transcript while waiting for the next one.
+      const k = chatFrameKey(instance, paneId);
+      if (k) chatFrameCache.delete(k);
       setFrame(null);
       setPhase('none');
       schedule(connect, NO_CONVERSATION_RECHECK_MS);
@@ -963,6 +980,8 @@ export function useChatStream(instance: string | null, paneId: string | null, li
           if (stopped || ticket !== generation) return;
           if (error instanceof HostV3Error && error.kind === 'http' && error.code === 'no_conversation') return waitForConversation();
           if (error instanceof HostV3Error && error.kind === 'http' && error.status === 404) {
+            const k = chatFrameKey(instance, paneId);
+            if (k) chatFrameCache.delete(k);
             setFrame(null);
             setPhase('gone');
             return;
@@ -982,21 +1001,49 @@ export function useChatStream(instance: string | null, paneId: string | null, li
           attempt.current = 0;
           setPhase('live');
           setFrame(next);
+          const k = chatFrameKey(instance, paneId);
+          if (k) {
+            if (chatFrameCache.size >= CHAT_FRAME_CACHE_MAX && !chatFrameCache.has(k)) {
+              const oldest = chatFrameCache.keys().next().value;
+              if (oldest) chatFrameCache.delete(oldest);
+            }
+            chatFrameCache.set(k, next);
+          }
         },
         onClose(event) {
           if (stopped || ticket !== generation) return;
-          if (event.noConversation) return waitForConversation();
-          if (event.gone) { setFrame(null); setPhase('gone'); return; }
+          const k = chatFrameKey(instance, paneId);
+          if (event.noConversation) {
+            if (k) chatFrameCache.delete(k);
+            return waitForConversation();
+          }
+          if (event.gone) {
+            if (k) chatFrameCache.delete(k);
+            setFrame(null);
+            setPhase('gone');
+            return;
+          }
           if (gotFrame) return retry();
           probe(ticket);
         },
       }, limit);
     };
     connect();
+
+    const appSub =
+      Platform.OS !== 'web'
+        ? AppState.addEventListener('change', (state) => {
+            if (state === 'active' && !stopped) {
+              connect();
+            }
+          })
+        : null;
+
     return () => {
       stopped = true;
       generation += 1;
       olderRef.current = () => undefined;
+      appSub?.remove();
       if (timer) clearTimeout(timer);
       socket?.close();
     };
