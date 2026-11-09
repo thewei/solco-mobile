@@ -626,14 +626,19 @@ export default function ChatScreen() {
           ) : null}
           {!pageReady ? (
             <Fade style={StyleSheet.absoluteFill}>
-              <View accessibilityRole="progressbar" accessibilityLabel="Loading chat" pointerEvents="none" style={{ flex: 1, gap: 14, padding: spacing.screen, backgroundColor: colors.canvas }}>
-                <View style={{ alignSelf: 'flex-end', width: '72%' }}>
-                  <Skeleton height={64} radius={radii.bubble} />
+              <View accessibilityRole="progressbar" accessibilityLabel="Loading chat" pointerEvents="none" style={{ flex: 1, justifyContent: 'space-between', padding: spacing.screen, backgroundColor: colors.canvas }}>
+                <View style={{ gap: 14 }}>
+                  <View style={{ alignSelf: 'flex-end', width: '72%' }}>
+                    <Skeleton height={64} radius={radii.bubble} />
+                  </View>
+                  <Skeleton width="90%" height={16} />
+                  <Skeleton width="76%" height={16} />
+                  <Skeleton width="58%" height={16} />
+                  <Skeleton width="100%" height={96} radius={radii.sm} />
                 </View>
-                <Skeleton width="90%" height={16} />
-                <Skeleton width="76%" height={16} />
-                <Skeleton width="58%" height={16} />
-                <Skeleton width="100%" height={96} radius={radii.sm} />
+                <View style={{ paddingBottom: spacing.compact }}>
+                  <Skeleton width="100%" height={56} radius={radii.lg} />
+                </View>
               </View>
             </Fade>
           ) : null}

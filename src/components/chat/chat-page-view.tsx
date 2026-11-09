@@ -59,6 +59,7 @@ export function ChatPageView({ state, conversationId, route, seedDraft = '', ope
   const ready = useRef(false);
   const readyRef = useRef(onReady);
   readyRef.current = onReady;
+  const fallbackTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const latest = useRef(state);
   const scheme = activeScheme();
   const html = useMemo(
@@ -67,6 +68,10 @@ export function ChatPageView({ state, conversationId, route, seedDraft = '', ope
   );
 
   const post = useCallback((message: ToPage) => ref.current?.injectJavaScript(deliverScript(message)), []);
+
+  useEffect(() => () => {
+    if (fallbackTimer.current) clearTimeout(fallbackTimer.current);
+  }, []);
 
   // The drawer ask follows the state that lists its sub-agent (the page opens a drawer only for a listed id).
   const asked = useRef(false);
@@ -94,6 +99,7 @@ export function ChatPageView({ state, conversationId, route, seedDraft = '', ope
   const onMessage = useCallback(
     (event: WebViewMessageEvent) => {
       if (isPageReady(event.nativeEvent.data)) {
+        if (fallbackTimer.current) clearTimeout(fallbackTimer.current);
         readyRef.current?.();
         return;
       }
@@ -122,7 +128,8 @@ export function ChatPageView({ state, conversationId, route, seedDraft = '', ope
         if (latest.current) post(eventMessage('chat:updated', latest.current));
         askSubagent();
         // Fallback safety: if no pageReady signal was received within 600ms, reveal the page.
-        setTimeout(() => {
+        if (fallbackTimer.current) clearTimeout(fallbackTimer.current);
+        fallbackTimer.current = setTimeout(() => {
           readyRef.current?.();
         }, 600);
       }}
