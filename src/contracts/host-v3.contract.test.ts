@@ -33,6 +33,8 @@ import {
   gitWriteResultSchema,
   quotaSchema,
   automationsSchema,
+  feedbackAnswerRequestSchema,
+  feedbackSnapshotSchema,
   automationDetailSchema,
   automationWriteSchema,
   AUTOMATION_REFUSALS,
@@ -441,6 +443,26 @@ describe('v3 golden files', () => {
       name: 'nightly-ci-triage',
       runId: 'run-7',
     });
+  });
+
+  it('feedback: capability, list, thread timeline, offline, answer, errors and the content-free frame', async () => {
+    expect(exact(bootstrapV3Schema, await load('bootstrap-feedback.json')).capabilities.feedback).toBe(true);
+    const list = exact(feedbackSnapshotSchema, await load('feedback.json'));
+    expect(list).toMatchObject({ online: true, waiting: 1, selected: '' });
+    expect(list.threads[0]).toMatchObject({ id: 't_1', project: 'solco', waiting: 1, askCount: 2 });
+    expect(list.detail).toBeUndefined();
+    const thread = exact(feedbackSnapshotSchema, await load('feedback-thread.json'));
+    expect(thread.selected).toBe('t_1');
+    expect(thread.detail?.projectKey).toBe('');
+    expect(thread.detail?.asks?.map((a) => a.state)).toEqual(['answered', 'pending']);
+    expect(thread.detail?.asks?.[1]?.questions.map((qn) => qn.type)).toEqual(['single', 'text']);
+    expect(exact(feedbackSnapshotSchema, await load('feedback-offline.json'))).toEqual({ online: false, threads: [], waiting: 0, selected: '' });
+    const request = exact(feedbackAnswerRequestSchema, await load('feedback-answer-request.json'));
+    expect(request.answers.q1).toEqual({ selected: ['SQLite'], custom: 'with WAL' });
+    expect(exact(chatAckSchema, await load('feedback-ack.json'))).toEqual({ ok: true });
+    expect(exact(errorBodyV3Schema, await load('error-feedback-final.json')).error.code).toBe('feedback_final');
+    expect(exact(errorBodyV3Schema, await load('error-feedback-unavailable.json')).error.code).toBe('feedback_unavailable');
+    expect(exact(eventMessageSchema, await load('events-feedback.json'))).toEqual({ t: 'feedback', kind: 'ask', threadId: 't_1', askId: 'a_1', waiting: 1 });
   });
 
   it('automations: bootstrap capability, list and the closed-gate error', async () => {

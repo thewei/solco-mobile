@@ -1,5 +1,5 @@
 // [INPUT]: the phone's paired Macs, the Host's capabilities, the Assistants overview, the Automations list and the tree (only for counts).
-// [OUTPUT]: Settings — the fourth tab: Connections (Hosts, Remote Desktop, Notifications), Agents (Assistants, Automations) and Code
+// [OUTPUT]: Settings — the fourth tab: Connections (Hosts, Remote Desktop, Notifications), Agents (Assistants, Feedback, Automations) and Code
 //           (Workspaces) as grouped rows with their counts on the right, then App → Appearance (a row that opens the choice page). A row whose capability the Host does not advertise is not drawn.
 // [POS]: Where the old Home ⋯ menu's four items and Connection settings moved (designs/mobile-t3-redesign `settings`). No Appearance
 //        row until 2026-11-08; now an App group with one Appearance row (the current choice on the right) closes the page; the choice itself is the second-level `/appearance` page, like every other setting. The counts are read-only hints from queries the destination pages already run.
@@ -9,11 +9,11 @@ import { Platform, ScrollView } from 'react-native';
 
 import { ListRow, Section } from '@/components/list-group';
 import { Screen } from '@/components/screen';
-import { useHostAutomations, useHostInstance, usePersonalAgentOverview, useTreeV3 } from '@/features/host/queries-v3';
+import { useHostAutomations, useHostFeedback, useHostInstance, usePersonalAgentOverview, useTreeV3 } from '@/features/host/queries-v3';
 import { APPEARANCE_LABEL } from '@/lib/appearance';
 import { useHostV3 } from '@/lib/host-v3-provider';
 import { useAppearanceStore } from '@/state/appearance-store';
-import { IconBell, IconClock, IconDeviceDesktop, IconDeviceLaptop, IconFolders, IconPalette, IconSparkles } from '@/theme/glyphs';
+import { IconBell, IconClock, IconDeviceDesktop, IconDeviceLaptop, IconFolders, IconInbox, IconPalette, IconSparkles } from '@/theme/glyphs';
 
 
 const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
@@ -26,6 +26,7 @@ export default function SettingsScreen() {
   const caps = bootstrap.data?.capabilities;
   const overview = usePersonalAgentOverview(caps?.personalAgent === true);
   const automations = useHostAutomations(caps?.automations === true);
+  const feedback = useHostFeedback(caps?.feedback === true);
   const tree = useTreeV3(instance);
   const assistants = overview.data?.assistants.length;
   const groups = overview.data?.groups.length ?? 0;
@@ -41,7 +42,7 @@ export default function SettingsScreen() {
           {caps?.remoteDesktop ? <ListRow icon={IconDeviceLaptop} label="Remote Desktop" onPress={() => router.push('/desktop')} /> : null}
           {Platform.OS === 'android' ? <ListRow icon={IconBell} label="Notifications" onPress={() => router.push('/notifications')} /> : null}
         </Section>
-        {caps?.personalAgent || caps?.automations ? (
+        {caps?.personalAgent || caps?.automations || caps?.feedback ? (
           <Section title="Agents">
             {caps.personalAgent ? (
               <ListRow
@@ -51,6 +52,7 @@ export default function SettingsScreen() {
                 onPress={() => router.push('/assistants')}
               />
             ) : null}
+            {caps.feedback ? <ListRow icon={IconInbox} label="Feedback" detail={feedback.data && feedback.data.waiting > 0 ? `${feedback.data.waiting} waiting` : undefined} onPress={() => router.push('/feedback')} /> : null}
             {caps.automations ? <ListRow icon={IconClock} label="Automations" detail={automations.data ? String(automations.data.automations.length) : undefined} onPress={() => router.push('/automations')} /> : null}
           </Section>
         ) : null}

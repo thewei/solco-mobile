@@ -12,13 +12,14 @@
 //        inline Approve / Deny (blocked agent whose permission card is unambiguous), and the live redraw of the
 //        Android home-screen widget (features/widget), and the automation-step notifications (the
 //        Host's `automation` events frame → automation-notice.ts, same channel), and the Assistants' pending
-//        approvals (assistant-approval-notice.ts: inline Approve / Deny answered straight to the Host).
+//        approvals (assistant-approval-notice.ts: inline Approve / Deny answered straight to the Host), and the Feedback
+//        asks (the Host's content-free `feedback` frame → feedback-notice.ts: a fixed sentence, tap → /feedback on that Ask).
 //        Screens stay consumers.
 // [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 // Invariant: everything here is a no-op on Web and iOS (no native service, no scheduling), and a
 // notification is only ever raised for a tree the shared socket actually delivered.
 import * as Notifications from 'expo-notifications';
-import { useGlobalSearchParams, useRouter, type Href } from 'expo-router';
+import { useGlobalSearchParams, usePathname, useRouter, type Href } from 'expo-router';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, type PropsWithChildren } from 'react';
 import { AppState, Platform } from 'react-native';
 
@@ -36,6 +37,7 @@ import {
 } from '@/features/host/attention';
 import { createAttentionDelivery } from '@/features/host/attention-delivery';
 import { automationNotice, type AutomationFrame } from '@/features/host/automation-notice';
+import { feedbackNotice, type FeedbackFrame } from '@/features/host/feedback-notice';
 import { createAssistantActivityNoticePump } from '@/features/host/assistant-activity-notice';
 import {
   ASSISTANT_APPROVAL_CATEGORY,
@@ -82,7 +84,23 @@ export function BackgroundBridge({ children }: PropsWithChildren) {
   }, []);
   const pollAssistantNotices = useRef<(() => void) | null>(null);
   const onAssistantActivity = useCallback(() => pollAssistantNotices.current?.(), []);
-  const live = useTreeEvents(instance, onAutomation, onAssistantActivity);
+  // An Agent's question arrives as one content-free frame (ids and a count): a fixed-sentence notification, raised in the
+  // foreground too except while the Feedback screen is already open; an Ask answered or ended anywhere clears its own.
+  const pathname = usePathname();
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
+  const onFeedback = useCallback((frame: FeedbackFrame) => {
+    if (Platform.OS === 'web') return;
+    const action = feedbackNotice(frame);
+    if (action.kind === 'dismiss') {
+      void Notifications.dismissNotificationAsync(action.identifier).catch(() => undefined);
+      return;
+    }
+    if (AppState.currentState === 'active' && pathnameRef.current === '/feedback') return;
+    const { identifier, title, body, data } = action.request;
+    void Notifications.scheduleNotificationAsync({ identifier, content: { title, body, data }, trigger: { channelId: ATTENTION_CHANNEL } }).catch(() => undefined);
+  }, []);
+  const live = useTreeEvents(instance, onAutomation, onAssistantActivity, onFeedback);
   const clientRef = useRef(client);
   clientRef.current = client;
 

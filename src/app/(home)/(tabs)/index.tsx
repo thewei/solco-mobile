@@ -28,14 +28,14 @@ import { describeConnectFailure } from '@/features/host/connect-failure';
 import { blocksScreen, useFailureGrace } from '@/features/host/failure-grace';
 import { agoLabel } from '@/features/host/host-card-model';
 import { agentAge, agoShort, flattenPanes, paneRoute, paneTitle, reportsAges, type FlatPane } from '@/features/host/pane-model';
-import { useHostInstance, usePersonalAgentOverview, useTreeV3 } from '@/features/host/queries-v3';
+import { useHostFeedback, useHostInstance, usePersonalAgentOverview, useTreeV3 } from '@/features/host/queries-v3';
 import { threadMatch, threadSections } from '@/features/host/thread-model';
 import { HostV3Error } from '@/lib/host-client-v3';
 import { useHostV3 } from '@/lib/host-v3-provider';
 import { useBackHandler } from '@/lib/use-back-handler';
 import { usePhoneNetwork } from '@/lib/use-phone-network';
 import { useNow } from '@/lib/use-now';
-import { IconEdit, IconFilter, IconFilterFilled, IconMessageCircle, IconSearch, IconSparkles, IconWifiOff } from '@/theme/glyphs';
+import { IconEdit, IconFilter, IconInbox, IconFilterFilled, IconMessageCircle, IconSearch, IconSparkles, IconWifiOff } from '@/theme/glyphs';
 import { colors, type as typeScale } from '@/theme/tokens';
 
 /** How many settled chats the `Earlier` shelf shows before "Show more", and how many each tap adds. */
@@ -65,6 +65,8 @@ export default function ChatsScreen() {
   const fab = useFabCollapse();
   const caps = bootstrap.data?.capabilities;
   const overview = usePersonalAgentOverview(caps?.personalAgent === true);
+  // The one Feedback line of Chats: only while an Agent's question waits for an answer (zero resident space otherwise).
+  const feedbackWaiting = useHostFeedback(caps?.feedback === true).data?.waiting ?? 0;
 
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState('');
@@ -168,6 +170,9 @@ export default function ChatsScreen() {
         scrollEventThrottle={16}
         onScroll={fab.onScroll}
         refreshControl={pullRefresh(refreshing, refresh)}>
+        {feedbackWaiting > 0 && !blocked ? (
+          <Banner icon={IconInbox} text={feedbackWaiting === 1 ? 'An Agent is waiting for your reply.' : `${feedbackWaiting} Agent questions are waiting for you.`} action="Answer" onAction={() => router.push('/feedback')} />
+        ) : null}
         {blocked ? <Banner text={`Can’t reach ${hostName}. Showing the last list from ${agoLabel(tree.dataUpdatedAt, now)}.`} action="Retry" onAction={retry} /> : null}
         {total === 0 ? (
           <EmptyState flush icon={IconSearch} title="No chats match" text="Try another word, or clear the workspace filter." />

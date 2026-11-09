@@ -1,0 +1,84 @@
+// [INPUT]: the paired Host's Feedback endpoints (GET /api/v3/feedback, POST …/asks/{id}/answer|end; needs `capabilities.feedback`)
+//          and the optional `thread` / `ask` params of a notification tap.
+// [OUTPUT]: Feedback — a stack screen (Settings → Agents → Feedback, the Chats banner, or a tap on an Agent-question
+//           notification) that is the desktop's own Feedback page: Agents' questions grouped into threads per project and
+//           Agent, the answer form last in a thread's timeline.
+// [POS]: Third client of the desktop Feedback inbox (2026-11-09 design). The Mac's broker owns every thread and Ask; this
+//        screen embeds the shared page (the same bundle as Chat, `route: 'feedback'`) and `features/feedback/controller`
+//        answers its `feedback.*` calls from the Host. No Mac path and no conversation reaches the phone: "Open project"
+//        is a Mac action and is not drawn.
+// [PROTOCOL]: 变更时更新此头部，然后检查 ../CLAUDE.md
+import { useQueryClient } from '@tanstack/react-query';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useMemo, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
+
+import { ChatPageView } from '@/components/chat/chat-page-view';
+import { EmptyState } from '@/components/empty-state';
+import { Fade } from '@/components/motion';
+import { Screen } from '@/components/screen';
+import { ListSkeleton } from '@/components/skeletons';
+import { createFeedbackController } from '@/features/feedback/controller';
+import { useBootstrapV3 } from '@/features/host/queries-v3';
+import { useHostV3 } from '@/lib/host-v3-provider';
+import { IconInbox } from '@/theme/glyphs';
+import { activeScheme, colors } from '@/theme/tokens';
+
+export default function FeedbackScreen() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const { client } = useHostV3();
+  const bootstrap = useBootstrapV3();
+  const params = useLocalSearchParams<{ thread?: string; ask?: string }>();
+  const [ready, setReady] = useState(false);
+  const served = bootstrap.data?.capabilities.feedback === true;
+  // The landing is read once, when the screen opens: a later param change must not re-seat a thread the user moved off.
+  const [landing] = useState(() => (params.thread ? { thread: params.thread, ask: params.ask ?? '' } : undefined));
+
+  const controller = useMemo(() => {
+    if (!client) return null;
+    return createFeedbackController(
+      {
+        snapshot: (thread) => client.feedback(thread || undefined),
+        answer: async (askId, request) => {
+          await client.feedbackAnswer(askId, request);
+          void queryClient.invalidateQueries({ queryKey: ['v3', 'feedback'] });
+        },
+        end: async (askId) => {
+          await client.feedbackEnd(askId);
+          void queryClient.invalidateQueries({ queryKey: ['v3', 'feedback'] });
+        },
+      },
+      activeScheme,
+      landing,
+    );
+  }, [client, queryClient, landing]);
+
+  let body: React.ReactNode;
+  if (bootstrap.data && !served) {
+    body = <EmptyState icon={IconInbox} title="No Feedback on this Mac" text="Update Solco on the computer to receive Agent questions here." action="Back" onAction={() => router.back()} />;
+  } else if (!controller || !bootstrap.data) {
+    body = <ListSkeleton />;
+  } else {
+    body = (
+      <View style={{ flex: 1 }}>
+        <Fade style={StyleSheet.absoluteFill}>
+          <ChatPageView route="feedback" state={null} conversationId="feedback" onCall={controller.call} onReady={() => setReady(true)} />
+        </Fade>
+        {!ready ? (
+          <Fade style={StyleSheet.absoluteFill}>
+            <View accessibilityRole="progressbar" accessibilityLabel="Loading feedback" pointerEvents="none" style={{ flex: 1, backgroundColor: colors.canvas }}>
+              <ListSkeleton />
+            </View>
+          </Fade>
+        ) : null}
+      </View>
+    );
+  }
+
+  return (
+    <Screen back title="Feedback">
+      {body}
+    </Screen>
+  );
+}

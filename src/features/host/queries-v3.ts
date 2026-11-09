@@ -8,7 +8,7 @@
 import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { AssistantCommitmentInput, AssistantGoalAction, AssistantTaskAction, AutomationFields, AutomationOp, Automations, ChatFrame, DeviceConnectResponse, GitCommitRequest, GitSyncOp, GitWriteResult, Notes, NotesFileName, ProactivityInput, TreeV3 } from '@/contracts/host-v3';
+import type { AssistantCommitmentInput, AssistantGoalAction, AssistantTaskAction, AutomationFields, AutomationOp, Automations, ChatFrame, DeviceConnectResponse, EventMessage, GitCommitRequest, GitSyncOp, GitWriteResult, Notes, NotesFileName, ProactivityInput, TreeV3 } from '@/contracts/host-v3';
 import { type AutomationFrame } from '@/features/host/automation-notice';
 import { newRequestId } from '@/features/host/launch-model';
 import { createRequestIds } from '@/features/host/personal-agent-model';
@@ -169,7 +169,7 @@ export function useTerminalHistory(instance: string | null, terminalId: string) 
  * Keeps one events socket open for the instance and refetches the tree on every change signal.
  * Reconnects with a capped exponential backoff; returns whether the stream is currently live.
  */
-export function useTreeEvents(instance: string | null, onAutomation?: (frame: AutomationFrame) => void, onAssistantActivity?: () => void): boolean {
+export function useTreeEvents(instance: string | null, onAutomation?: (frame: AutomationFrame) => void, onAssistantActivity?: () => void, onFeedback?: (frame: Extract<EventMessage, { t: 'feedback' }>) => void): boolean {
   const { client, signal } = useHostV3();
   const queryClient = useQueryClient();
   const [live, setLive] = useState(false);
@@ -178,6 +178,8 @@ export function useTreeEvents(instance: string | null, onAutomation?: (frame: Au
   onAutomationRef.current = onAutomation;
   const onAssistantActivityRef = useRef(onAssistantActivity);
   onAssistantActivityRef.current = onAssistantActivity;
+  const onFeedbackRef = useRef(onFeedback);
+  onFeedbackRef.current = onFeedback;
 
   useEffect(() => {
     if (!client || !instance) return undefined;
@@ -212,6 +214,11 @@ export function useTreeEvents(instance: string | null, onAutomation?: (frame: Au
             void queryClient.invalidateQueries({ queryKey: ['v3', 'automations'] }); // an open Automations screen follows it
             return;
           }
+          if (message.t === 'feedback') {
+            onFeedbackRef.current?.(message); // an Agent's question reached (or left) the Mac's inbox: a notification, not a tree change
+            void queryClient.invalidateQueries({ queryKey: ['v3', 'feedback'] }); // an open Feedback screen, the Settings badge and the Chats banner follow it
+            return;
+          }
           if (message.t === 'personal-agent.changed') {
             // A committed Activity fact can change without moving Task/Goal
             // counters. The Host sends only a hint; the client reads facts
@@ -221,6 +228,7 @@ export function useTreeEvents(instance: string | null, onAutomation?: (frame: Au
             onAssistantActivityRef.current?.();
             return;
           }
+          if (message.t === 'hello') void queryClient.invalidateQueries({ queryKey: ['v3', 'feedback'] }); // a reconnect: the frames missed meanwhile
           void queryClient.invalidateQueries({ queryKey: ['v3', 'tree', instance] });
         },
         onClose() {
@@ -392,6 +400,25 @@ export function useHostAutomations(enabled: boolean) {
     queryFn: () => client!.automations(),
     enabled: client !== null && enabled,
     staleTime: 0,
+    gcTime: 60_000,
+    retry: false,
+  });
+  useForgetOnUnauthorized(query.error);
+  return query;
+}
+
+/**
+ * The Mac's Feedback list (needs `capabilities.feedback`): how many Agent questions wait for an answer, for the Settings
+ * badge and the Chats banner. Read on open, on foreground and when a `feedback` frame arrives; never polled — the
+ * Feedback screen itself polls through the shared page.
+ */
+export function useHostFeedback(enabled: boolean) {
+  const { client } = useHostV3();
+  const query = useQuery({
+    queryKey: ['v3', 'feedback'],
+    queryFn: () => client!.feedback(),
+    enabled: client !== null && enabled,
+    staleTime: 15_000,
     gcTime: 60_000,
     retry: false,
   });

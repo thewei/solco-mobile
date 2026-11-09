@@ -46,6 +46,10 @@ import {
   gitCommitRequestSchema,
   quotaSchema,
   automationsSchema,
+  feedbackAnswerRequestSchema,
+  feedbackSnapshotSchema,
+  type FeedbackAnswerRequest,
+  type FeedbackSnapshot,
   automationDetailSchema,
   automationWriteSchema,
   type AutomationDetail,
@@ -516,6 +520,15 @@ export interface HostClientV3 {
   quota(force?: boolean): Promise<Quota>;
   /** The Mac's Automations list, read-only (needs `capabilities.automations`; 404 `automations_unavailable` while its plugin is off). */
   automations(): Promise<Automations>;
+  /**
+   * The Mac's Feedback inbox (needs `capabilities.feedback`): the Agent-question threads and, for `thread`, its
+   * timeline. A broker that is not running is `online:false`, not an error.
+   */
+  feedback(thread?: string): Promise<FeedbackSnapshot>;
+  /** Answer one Ask (an expired one too — a late answer). 409 `feedback_final` once the Ask was ended or answered; 503 `feedback_offline`. */
+  feedbackAnswer(askId: string, request: FeedbackAnswerRequest): Promise<void>;
+  /** Close an Ask without an answer. */
+  feedbackEnd(askId: string): Promise<void>;
   /** One automation in full — prompt, rationale, schedule fields and its newest runs (needs `capabilities.automationsManage`). */
   automationDetail(name: string): Promise<AutomationDetail>;
   /**
@@ -920,6 +933,9 @@ export function createHostClientV3(transport: PinnedTransport | null, connection
     remoteDesktopSession: (offer) => slowPostJson('/remote-desktop/session', JSON.stringify(rdOfferSchema.parse(offer)), rdAnswerSchema, 'remote desktop', REMOTE_DESKTOP_TIMEOUT_MS),
     quota: (force) => get(`/quota${force ? '?refresh=1' : ''}`, quotaSchema, 'quota', QUOTA_TIMEOUT_MS),
     automations: () => get('/automations', automationsSchema, 'automations'),
+    feedback: (thread) => get(`/feedback${thread ? `?thread=${q(thread)}` : ''}`, feedbackSnapshotSchema, 'feedback'),
+    feedbackAnswer: (askId, request) => post(`/feedback/asks/${q(askId)}/answer`, JSON.stringify(feedbackAnswerRequestSchema.parse(request)), 'feedback'),
+    feedbackEnd: (askId) => post(`/feedback/asks/${q(askId)}/end`, null, 'feedback'),
     automationDetail: (name) => get(`/automations/${q(name)}`, automationDetailSchema, 'automation'),
     createAutomation: (name, fields) =>
       slowPostJson('/automations', JSON.stringify(automationWriteSchema.parse({ ...fields, name })), automationsSchema, 'automation', AUTOMATION_TIMEOUT_MS),

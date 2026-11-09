@@ -3,7 +3,7 @@
 //           `themeSeed`, `draftSeed`, `withShim`, `parsePageCall`, `isPageReady`.
 //           The shim also paints-gates the page: it hides the document before the page's first paint and
 //           reveals it only when the first conversation state arrives (a `chat:updated` event or the result
-//           of the page's own `chat.Snapshot`/`chat.LinkSession` call), notifying the host via `pageReady`
+//           of the page's own `chat.Snapshot`/`chat.LinkSession`/`feedback.Snapshot` call), notifying the host via `pageReady`
 //           so the phone never shows the page's empty boot chrome or flashes mismatched themes.
 // [POS]: the whole wire between the shared Chat page and React Native. The page is the desktop's own bundle, which
 //        talks to `mygo-runtime`; this shim is the phone's stand-in for that runtime, so the page needs no change.
@@ -47,7 +47,7 @@ window.__solcoDeliver=deliver;
 window.addEventListener('message',function(e){if(!window.ReactNativeWebView&&e.source===window.parent)deliver(e.data);});
 function on(name,f){(L[name]=L[name]||[]).push(f);return function(){var a=L[name]||[];var i=a.indexOf(f);if(i>=0)a.splice(i,1);};}
 window.mygo={
-  call:function(method){var args=Array.prototype.slice.call(arguments,1);return new Promise(function(resolve,reject){var id=++n;if(method==='chat.Snapshot'||method==='chat.LinkSession')S=id;P[id]={resolve:resolve,reject:reject};post({k:'call',id:id,method:method,args:args});});},
+  call:function(method){var args=Array.prototype.slice.call(arguments,1);return new Promise(function(resolve,reject){var id=++n;if(method==='chat.Snapshot'||method==='chat.LinkSession'||method==='feedback.Snapshot')S=id;P[id]={resolve:resolve,reject:reject};post({k:'call',id:id,method:method,args:args});});},
   on:on,
   once:function(name,f){var off=on(name,function(x){off();f(x);});return off;},
   channel:function(){throw new Error('channels are not available on the phone');},
@@ -95,6 +95,11 @@ export const eventMessage = (name: string, payload: unknown): ToPage => ({ k: 'e
 /** The JS the phone injects to hand one message to the page (native WebView). */
 export function deliverScript(message: ToPage): string {
   return `window.__solcoDeliver(${JSON.stringify(JSON.stringify(message))});true;`;
+}
+
+/** Names the page the shared bundle shows (`__SOLCO_ROUTE__`, read by its phone entry): none = the Chat body. */
+export function routeSeed(route: 'feedback' | undefined): string {
+  return route ? `window.__SOLCO_ROUTE__=${JSON.stringify(route)};` : '';
 }
 
 /**

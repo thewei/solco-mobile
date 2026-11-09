@@ -216,6 +216,24 @@ describe('chat', () => {
     expect(error).toMatchObject({ kind: 'http', status: 404, code: 'no_queued' });
   });
 
+  it('reads the Feedback inbox, answers and ends an Ask with the Host\'s paths and bodies, and relays a final one', async () => {
+    const list = fakeTransport(() => ok(fixture('feedback-thread.json')));
+    const client = createHostClientV3(list.transport, connection);
+    expect((await client.feedback('t 1')).detail?.asks).toHaveLength(2);
+    expect(list.requests[0]).toMatchObject({ url: 'https://192.168.1.20:7788/api/v3/feedback?thread=t%201' });
+    await client.feedback();
+    expect(list.requests[1]?.url).toBe('https://192.168.1.20:7788/api/v3/feedback');
+    const write = fakeTransport(() => ok(fixture('feedback-ack.json')));
+    const writer = createHostClientV3(write.transport, connection);
+    await writer.feedbackAnswer('a 1', { answers: { q1: { selected: ['SQLite'] } } });
+    expect(write.requests[0]).toMatchObject({ method: 'POST', url: 'https://192.168.1.20:7788/api/v3/feedback/asks/a%201/answer', body: '{"answers":{"q1":{"selected":["SQLite"]}}}' });
+    await writer.feedbackEnd('a_2');
+    expect(write.requests[1]).toMatchObject({ method: 'POST', url: 'https://192.168.1.20:7788/api/v3/feedback/asks/a_2/end' });
+    const final = fakeTransport(() => ({ status: 409, headers: {}, body: fixture('error-feedback-final.json') }));
+    const error = await createHostClientV3(final.transport, connection).feedbackEnd('a_0').catch((e) => e);
+    expect(error).toMatchObject({ kind: 'http', status: 409, code: 'feedback_final' });
+  });
+
   it('withdraws one queued item by id, encoding it, and relays the refusal', async () => {
     const { transport, requests } = fakeTransport(() => ok(fixture('queue-cancel-ok.json')));
     await createHostClientV3(transport, connection).cancelQueuedItem('my session', 'w1:p1', 'req 1');

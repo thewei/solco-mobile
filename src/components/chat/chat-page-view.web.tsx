@@ -8,17 +8,17 @@
 import { useEffect, useMemo, useRef } from 'react';
 
 import { CHAT_PAGE_HTML } from '@/generated/chat-page';
-import { draftSeed, errorMessage, eventMessage, isPageReady, MYGO_SHIM, parsePageCall, resultMessage, themeSeed, withShim, type ToPage } from '@/features/chat-web/protocol';
+import { draftSeed, errorMessage, eventMessage, isPageReady, MYGO_SHIM, parsePageCall, resultMessage, routeSeed, themeSeed, withShim, type ToPage } from '@/features/chat-web/protocol';
 import { activeScheme } from '@/theme/tokens';
 
 import type { ChatPageViewProps } from './chat-page-view';
 
-export function ChatPageView({ state, conversationId, seedDraft = '', openSubagent, onCall, onReady }: ChatPageViewProps) {
+export function ChatPageView({ state, conversationId, route, seedDraft = '', openSubagent, onCall, onReady }: ChatPageViewProps) {
   const frame = useRef<HTMLIFrameElement | null>(null);
   const scheme = activeScheme();
   const html = useMemo(
-    () => withShim(CHAT_PAGE_HTML, themeSeed(scheme) + MYGO_SHIM + draftSeed(conversationId, seedDraft)),
-    [scheme, conversationId, seedDraft],
+    () => withShim(CHAT_PAGE_HTML, themeSeed(scheme) + routeSeed(route) + MYGO_SHIM + draftSeed(conversationId, seedDraft)),
+    [scheme, route, conversationId, seedDraft],
   );
   const post = (message: ToPage) => frame.current?.contentWindow?.postMessage(JSON.stringify(message), '*');
   const latest = useRef({ state, onCall, onReady });

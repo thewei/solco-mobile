@@ -11,7 +11,7 @@ import { Linking } from 'react-native';
 import WebViewJsx, { type WebViewMessageEvent } from 'react-native-webview';
 
 import { CHAT_PAGE_HTML } from '@/generated/chat-page';
-import { deliverScript, draftSeed, errorMessage, eventMessage, isPageReady, MYGO_SHIM, parsePageCall, resultMessage, themeSeed, withShim, type ToPage } from '@/features/chat-web/protocol';
+import { deliverScript, draftSeed, errorMessage, eventMessage, isPageReady, MYGO_SHIM, parsePageCall, resultMessage, routeSeed, themeSeed, withShim, type ToPage } from '@/features/chat-web/protocol';
 import type { PageState } from '@/features/chat-web/page-state';
 import { activeScheme, colors } from '@/theme/tokens';
 
@@ -44,6 +44,8 @@ const BASE_URL = 'https://solco.page.invalid/';
 export interface ChatPageViewProps {
   state: PageState | null;
   conversationId: string;
+  /** The page of the shared bundle to show: none = the Chat body; `feedback` = the Feedback inbox (no state is pushed to it). */
+  route?: 'feedback';
   seedDraft?: string;
   /** A sub-agent id whose drawer opens once the page lists it (asked once). */
   openSubagent?: string;
@@ -52,7 +54,7 @@ export interface ChatPageViewProps {
   onReady?: () => void;
 }
 
-export function ChatPageView({ state, conversationId, seedDraft = '', openSubagent, onCall, onReady }: ChatPageViewProps) {
+export function ChatPageView({ state, conversationId, route, seedDraft = '', openSubagent, onCall, onReady }: ChatPageViewProps) {
   const ref = useRef<{ injectJavaScript: (script: string) => void } | null>(null);
   const ready = useRef(false);
   const readyRef = useRef(onReady);
@@ -60,8 +62,8 @@ export function ChatPageView({ state, conversationId, seedDraft = '', openSubage
   const latest = useRef(state);
   const scheme = activeScheme();
   const html = useMemo(
-    () => withShim(CHAT_PAGE_HTML, themeSeed(scheme) + MYGO_SHIM + draftSeed(conversationId, seedDraft)),
-    [scheme, conversationId, seedDraft],
+    () => withShim(CHAT_PAGE_HTML, themeSeed(scheme) + routeSeed(route) + MYGO_SHIM + draftSeed(conversationId, seedDraft)),
+    [scheme, route, conversationId, seedDraft],
   );
 
   const post = useCallback((message: ToPage) => ref.current?.injectJavaScript(deliverScript(message)), []);

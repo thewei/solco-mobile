@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { CHAT_PAGE_HTML } from '@/generated/chat-page';
 
-import { deliverScript, draftSeed, errorMessage, eventMessage, isPageReady, MYGO_SHIM, parsePageCall, resultMessage, themeSeed, withShim } from './protocol';
+import { deliverScript, draftSeed, errorMessage, eventMessage, isPageReady, MYGO_SHIM, parsePageCall, resultMessage, routeSeed, themeSeed, withShim } from './protocol';
 
 describe('parsePageCall', () => {
   it('accepts a well-formed call', () => {
@@ -62,6 +62,17 @@ describe('the shim', () => {
     expect(got).toEqual([1]);
   });
 
+  it('reveals the page when the first Feedback snapshot answers, even a failed one', async () => {
+    for (const reply of [(id: number) => resultMessage(id, { online: true }), (id: number) => errorMessage(id, 'offline')]) {
+      const { mygo, sent, deliver } = boot();
+      const pending = mygo.call('feedback.Snapshot', '').catch(() => undefined);
+      expect(sent.map((m) => parsePageCall(m)?.method)).toEqual(['feedback.Snapshot']);
+      deliver(reply(1));
+      await pending;
+      expect(sent.map((m) => JSON.parse(m).k)).toEqual(['call', 'pageReady']);
+    }
+  });
+
   it('ignores a malformed delivery', () => {
     const { deliver } = boot();
     expect(() => deliver('not json')).not.toThrow();
@@ -91,6 +102,15 @@ describe('draftSeed', () => {
     expect(store.get('solco:chat-draft:w1:p1')).toBe('say "hi"\n');
     new Function('localStorage', draftSeed('w1:p1', 'other'))(localStorage);
     expect(store.get('solco:chat-draft:w1:p1')).toBe('say "hi"\n');
+  });
+});
+
+describe('routeSeed', () => {
+  it('names the page for the shared bundle, or nothing for Chat', () => {
+    expect(routeSeed(undefined)).toBe('');
+    const win: Record<string, unknown> = {};
+    new Function('window', routeSeed('feedback'))(win);
+    expect(win.__SOLCO_ROUTE__).toBe('feedback');
   });
 });
 

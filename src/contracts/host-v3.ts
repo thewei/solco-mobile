@@ -49,7 +49,7 @@ export const bootstrapV3Schema = z.object({
   hostId: z.string(),
   hostName: z.string(),
   version: z.string(),
-  capabilities: z.object({ terminal: z.boolean(), chat: z.boolean(), launch: z.boolean().optional(), git: z.boolean().optional(), gitWrite: z.boolean().optional(), files: z.boolean().optional(), filesSearch: z.boolean().optional(), terminalControl: z.boolean().optional(), terminalHistory: z.boolean().optional(), quota: z.boolean().optional(), automations: z.boolean().optional(), automationsManage: z.boolean().optional(), personalAgent: z.boolean().optional(), personalAgentManage: z.boolean().optional(), personalAgentApprove: z.boolean().optional(), personalAgentGroups: z.boolean().optional(), personalAgentGroupArchive: z.boolean().optional(), personalAgentPersona: z.boolean().optional(), personalAgentPlans: z.boolean().optional(), personalAgentRoutines: z.boolean().optional(), personalAgentAutonomy: z.boolean().optional(), personalAgentMemory: z.boolean().optional(), personalAgentProactivity: z.boolean().optional(), personalAgentActivityNotices: z.boolean().optional(), personalAgentCoordinatorChat: z.boolean().optional(), assistantSystemPush: z.boolean().optional(), personalAgentNarrativeReports: z.boolean().optional(), sessions: z.boolean().optional(), sessionContinue: z.boolean().optional(), sessionTrash: z.boolean().optional(), voice: z.boolean().optional(), attachments: z.boolean().optional(), queue: z.boolean().optional(), queueEdit: z.boolean().optional(), devices: z.boolean().optional(), remoteDesktop: z.boolean().optional(), p2p: z.boolean().optional() }),
+  capabilities: z.object({ terminal: z.boolean(), chat: z.boolean(), launch: z.boolean().optional(), git: z.boolean().optional(), gitWrite: z.boolean().optional(), files: z.boolean().optional(), filesSearch: z.boolean().optional(), terminalControl: z.boolean().optional(), terminalHistory: z.boolean().optional(), quota: z.boolean().optional(), feedback: z.boolean().optional(), automations: z.boolean().optional(), automationsManage: z.boolean().optional(), personalAgent: z.boolean().optional(), personalAgentManage: z.boolean().optional(), personalAgentApprove: z.boolean().optional(), personalAgentGroups: z.boolean().optional(), personalAgentGroupArchive: z.boolean().optional(), personalAgentPersona: z.boolean().optional(), personalAgentPlans: z.boolean().optional(), personalAgentRoutines: z.boolean().optional(), personalAgentAutonomy: z.boolean().optional(), personalAgentMemory: z.boolean().optional(), personalAgentProactivity: z.boolean().optional(), personalAgentActivityNotices: z.boolean().optional(), personalAgentCoordinatorChat: z.boolean().optional(), assistantSystemPush: z.boolean().optional(), personalAgentNarrativeReports: z.boolean().optional(), sessions: z.boolean().optional(), sessionContinue: z.boolean().optional(), sessionTrash: z.boolean().optional(), voice: z.boolean().optional(), attachments: z.boolean().optional(), queue: z.boolean().optional(), queueEdit: z.boolean().optional(), devices: z.boolean().optional(), remoteDesktop: z.boolean().optional(), p2p: z.boolean().optional() }),
   /** Herdr sessions of the Mac, plus (`capabilities.devices`) the Mac's saved machines as `kind: 'device'` entries with a status. */
   instances: z.array(z.object({ id: z.string().min(1), kind: z.literal('device').optional(), label: z.string().optional(), status: z.string().optional() })),
   /** What POST /launch accepts, `terminal` first; present only when `capabilities.launch`. */
@@ -161,6 +161,14 @@ export const eventMessageSchema = z.discriminatedUnion('t', [
     kind: z.enum(['draft', 'started', 'done', 'failed']),
     name: z.string().min(1),
     runId: z.string().optional(),
+  }),
+  /** An Agent's question reached (kind `ask`) or left (`resolved`) the Mac's Feedback inbox: opaque ids and the waiting count, never text. */
+  z.object({
+    t: z.literal('feedback'),
+    kind: z.enum(['ask', 'resolved']),
+    threadId: z.string().min(1),
+    askId: z.string().min(1),
+    waiting: z.number().int().nonnegative(),
   }),
   /** The Mac's Assistants overview moved: counts only — the phone re-reads the authoritative overview. */
   z.object({
@@ -656,6 +664,96 @@ export type QuotaProvider = z.infer<typeof quotaProviderSchema>;
 
 export const quotaSchema = z.object({ providers: z.array(quotaProviderSchema) });
 export type Quota = z.infer<typeof quotaSchema>;
+
+// ---- Feedback inbox (present only when `capabilities.feedback`) ----
+// Questions that Agents put to the user through the Mac's feedback broker, grouped into threads per project and
+// Agent. The shared Feedback page draws this snapshot; the broker on the Mac is the only owner of the state.
+// Times are epoch milliseconds. The Host strips Mac paths (projectKey is always empty here, projectRoot absent).
+
+export const feedbackQuestionSchema = z.object({
+  id: z.string(),
+  text: z.string(),
+  type: z.enum(['single', 'multiple', 'text']),
+  options: z.array(z.string()).optional(),
+  allowCustom: z.boolean(),
+  required: z.boolean(),
+  placeholder: z.string().optional(),
+});
+export type FeedbackQuestion = z.infer<typeof feedbackQuestionSchema>;
+
+export const feedbackAnswerSchema = z.object({ selected: z.array(z.string()), custom: z.string().optional() });
+export type FeedbackAnswer = z.infer<typeof feedbackAnswerSchema>;
+
+export const feedbackAskSchema = z.object({
+  id: z.string(),
+  threadId: z.string(),
+  createdAt: z.number().int().nonnegative(),
+  resolvedAt: z.number().int().nonnegative().optional(),
+  description: z.string().optional(),
+  questions: z.array(feedbackQuestionSchema),
+  timeoutMs: z.number().int().nonnegative(),
+  /** pending = waiting for you; expired = timed out or the Agent left (a late answer still goes through); ended = closed by you. */
+  state: z.enum(['pending', 'answered', 'expired', 'ended']),
+  answers: z.record(z.string(), feedbackAnswerSchema).optional(),
+  attachmentCount: z.number().int().nonnegative().optional(),
+  message: z.string().optional(),
+  late: z.boolean().optional(),
+  lateDelivered: z.boolean().optional(),
+  lastHeartbeat: z.number().int().nonnegative(),
+  /** Pending, and the Agent's side stopped polling. */
+  disconnected: z.boolean().optional(),
+});
+export type FeedbackAsk = z.infer<typeof feedbackAskSchema>;
+
+export const feedbackThreadSummarySchema = z.object({
+  id: z.string(),
+  project: z.string(),
+  branch: z.string().optional(),
+  worktree: z.boolean().optional(),
+  client: z.string().optional(),
+  title: z.string(),
+  lastAt: z.number().int().nonnegative(),
+  waiting: z.number().int().nonnegative(),
+  askCount: z.number().int().nonnegative(),
+  preview: z.string().optional(),
+  lastState: z.string().optional(),
+});
+export type FeedbackThreadSummary = z.infer<typeof feedbackThreadSummarySchema>;
+
+export const feedbackThreadSchema = z.object({
+  id: z.string(),
+  projectKey: z.string(),
+  project: z.string(),
+  branch: z.string().optional(),
+  worktree: z.boolean().optional(),
+  client: z.string().optional(),
+  clientVersion: z.string().optional(),
+  title: z.string(),
+  explicitId: z.string().optional(),
+  taskId: z.string().optional(),
+  createdAt: z.number().int().nonnegative(),
+  lastAt: z.number().int().nonnegative(),
+  waiting: z.number().int().nonnegative(),
+  asks: z.array(feedbackAskSchema).optional(),
+});
+export type FeedbackThread = z.infer<typeof feedbackThreadSchema>;
+
+/** GET /feedback[?thread=]: the list and, for `thread`, its timeline. `online:false` = the Mac's broker is not running (a state, not an error). */
+export const feedbackSnapshotSchema = z.object({
+  online: z.boolean(),
+  threads: z.array(feedbackThreadSummarySchema),
+  waiting: z.number().int().nonnegative(),
+  selected: z.string(),
+  detail: feedbackThreadSchema.optional(),
+});
+export type FeedbackSnapshot = z.infer<typeof feedbackSnapshotSchema>;
+
+/** POST /feedback/asks/{id}/answer: an answer per question id (a late one to an expired Ask included). */
+export const feedbackAnswerRequestSchema = z.object({
+  answers: z.record(z.string(), feedbackAnswerSchema),
+  attachments: z.array(z.object({ mimeType: z.string(), dataBase64: z.string(), name: z.string().optional() })).optional(),
+});
+export type FeedbackAnswerRequest = z.infer<typeof feedbackAnswerRequestSchema>;
 
 // ---- Automations (read-only; present only when `capabilities.automations`) ----
 // The Mac's plugin is the authority; this is its list as the desktop page shows it, without prompts,
