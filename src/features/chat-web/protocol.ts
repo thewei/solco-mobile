@@ -1,9 +1,10 @@
 // [INPUT]: raw strings crossing the WebView boundary (page → phone `call`s) and the page HTML.
-// [OUTPUT]: `MYGO_SHIM` (the `globalThis.mygo` runtime the shared Chat page's generated bridge calls into).
+// [OUTPUT]: `MYGO_SHIM` (the `globalThis.mygo` runtime the shared Chat page's generated bridge calls into),
+//           `themeSeed`, `draftSeed`, `withShim`, `parsePageCall`, `isPageReady`.
 //           The shim also paints-gates the page: it hides the document before the page's first paint and
 //           reveals it only when the first conversation state arrives (a `chat:updated` event or the result
-//           of the page's own `chat.Snapshot`/`chat.LinkSession` call), so the phone never shows the page's
-//           empty boot chrome while the WebView warms up — the screen's own loading state covers that time.
+//           of the page's own `chat.Snapshot`/`chat.LinkSession` call), notifying the host via `pageReady`
+//           so the phone never shows the page's empty boot chrome or flashes mismatched themes.
 // [POS]: the whole wire between the shared Chat page and React Native. The page is the desktop's own bundle, which
 //        talks to `mygo-runtime`; this shim is the phone's stand-in for that runtime, so the page needs no change.
 // [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -23,7 +24,18 @@ export type ToPage =
 /** Installed before the page's own scripts. Posts to React Native, or to the parent frame on Web. */
 export const MYGO_SHIM = `(function(){
 var L={},P={},n=0,S=0,shown=false;
-function show(){if(shown)return;shown=true;try{document.documentElement.style.visibility='';}catch(e){}}
+function show(){
+  if(shown)return;
+  shown=true;
+  try{document.documentElement.style.visibility='';}catch(e){}
+  try{
+    if(window.requestAnimationFrame){
+      window.requestAnimationFrame(function(){post({k:'pageReady'});});
+    }else{
+      post({k:'pageReady'});
+    }
+  }catch(e){}
+}
 function post(m){var s=JSON.stringify(m);if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(s);else window.parent.postMessage(s,'*');}
 function deliver(m){
   if(typeof m==='string'){try{m=JSON.parse(m);}catch(e){return;}}
@@ -56,6 +68,24 @@ export function parsePageCall(raw: string): PageCall | null {
   const m = value as Record<string, unknown>;
   if (m.k !== 'call' || typeof m.id !== 'number' || typeof m.method !== 'string' || !Array.isArray(m.args)) return null;
   return { id: m.id, method: m.method, args: m.args };
+}
+
+/** Reports whether the page has painted its first content and unhidden the document. */
+export function isPageReady(raw: string): boolean {
+  try {
+    const val = JSON.parse(raw);
+    return val !== null && typeof val === 'object' && (val as Record<string, unknown>).k === 'pageReady';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Seeds the page's theme before its first paint, so the WebView never paints a
+ * mismatched background while the first frame is in flight.
+ */
+export function themeSeed(theme: 'light' | 'dark'): string {
+  return `document.documentElement.dataset.themePin=document.documentElement.dataset.theme=${JSON.stringify(theme)};`;
 }
 
 export const resultMessage = (id: number, value: unknown): ToPage => ({ k: 'result', id, ok: true, value });

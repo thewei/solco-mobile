@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { CHAT_PAGE_HTML } from '@/generated/chat-page';
 
-import { deliverScript, draftSeed, errorMessage, eventMessage, MYGO_SHIM, parsePageCall, resultMessage, withShim } from './protocol';
+import { deliverScript, draftSeed, errorMessage, eventMessage, isPageReady, MYGO_SHIM, parsePageCall, resultMessage, themeSeed, withShim } from './protocol';
 
 describe('parsePageCall', () => {
   it('accepts a well-formed call', () => {
@@ -91,6 +91,27 @@ describe('draftSeed', () => {
     expect(store.get('solco:chat-draft:w1:p1')).toBe('say "hi"\n');
     new Function('localStorage', draftSeed('w1:p1', 'other'))(localStorage);
     expect(store.get('solco:chat-draft:w1:p1')).toBe('say "hi"\n');
+  });
+});
+
+describe('themeSeed', () => {
+  it('sets themePin and theme dataset attributes', () => {
+    const doc = { documentElement: { dataset: {} as Record<string, string> } };
+    new Function('document', themeSeed('light'))(doc);
+    expect(doc.documentElement.dataset.themePin).toBe('light');
+    expect(doc.documentElement.dataset.theme).toBe('light');
+
+    new Function('document', themeSeed('dark'))(doc);
+    expect(doc.documentElement.dataset.themePin).toBe('dark');
+    expect(doc.documentElement.dataset.theme).toBe('dark');
+  });
+});
+
+describe('isPageReady', () => {
+  it('detects pageReady signal', () => {
+    expect(isPageReady('{"k":"pageReady"}')).toBe(true);
+    expect(isPageReady('{"k":"call","id":1}')).toBe(false);
+    expect(isPageReady('not json')).toBe(false);
   });
 });
 

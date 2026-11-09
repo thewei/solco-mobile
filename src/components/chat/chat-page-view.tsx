@@ -11,9 +11,9 @@ import { Linking } from 'react-native';
 import WebViewJsx, { type WebViewMessageEvent } from 'react-native-webview';
 
 import { CHAT_PAGE_HTML } from '@/generated/chat-page';
-import { deliverScript, draftSeed, errorMessage, eventMessage, MYGO_SHIM, parsePageCall, resultMessage, withShim, type ToPage } from '@/features/chat-web/protocol';
+import { deliverScript, draftSeed, errorMessage, eventMessage, isPageReady, MYGO_SHIM, parsePageCall, resultMessage, themeSeed, withShim, type ToPage } from '@/features/chat-web/protocol';
 import type { PageState } from '@/features/chat-web/page-state';
-import { colors } from '@/theme/tokens';
+import { activeScheme, colors } from '@/theme/tokens';
 
 // react-native-webview's class declaration infers `never` props under JSX (same note as native-terminal.tsx);
 // this pins the surface we use.
@@ -58,7 +58,11 @@ export function ChatPageView({ state, conversationId, seedDraft = '', openSubage
   const readyRef = useRef(onReady);
   readyRef.current = onReady;
   const latest = useRef(state);
-  const html = useMemo(() => withShim(CHAT_PAGE_HTML, MYGO_SHIM + draftSeed(conversationId, seedDraft)), [conversationId, seedDraft]);
+  const scheme = activeScheme();
+  const html = useMemo(
+    () => withShim(CHAT_PAGE_HTML, themeSeed(scheme) + MYGO_SHIM + draftSeed(conversationId, seedDraft)),
+    [scheme, conversationId, seedDraft],
+  );
 
   const post = useCallback((message: ToPage) => ref.current?.injectJavaScript(deliverScript(message)), []);
 
@@ -87,6 +91,10 @@ export function ChatPageView({ state, conversationId, seedDraft = '', openSubage
 
   const onMessage = useCallback(
     (event: WebViewMessageEvent) => {
+      if (isPageReady(event.nativeEvent.data)) {
+        readyRef.current?.();
+        return;
+      }
       const call = parsePageCall(event.nativeEvent.data);
       if (!call) return;
       onCall(call.method, call.args).then(
@@ -111,7 +119,10 @@ export function ChatPageView({ state, conversationId, seedDraft = '', openSubage
         ready.current = true;
         if (latest.current) post(eventMessage('chat:updated', latest.current));
         askSubagent();
-        readyRef.current?.();
+        // Fallback safety: if no pageReady signal was received within 600ms, reveal the page.
+        setTimeout(() => {
+          readyRef.current?.();
+        }, 600);
       }}
       onShouldStartLoadWithRequest={(request) => {
         if (request.url === BASE_URL || request.url.startsWith('about:') || request.url.startsWith('data:')) return true;

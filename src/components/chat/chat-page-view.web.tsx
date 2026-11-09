@@ -8,19 +8,28 @@
 import { useEffect, useMemo, useRef } from 'react';
 
 import { CHAT_PAGE_HTML } from '@/generated/chat-page';
-import { draftSeed, errorMessage, eventMessage, MYGO_SHIM, parsePageCall, resultMessage, withShim, type ToPage } from '@/features/chat-web/protocol';
+import { draftSeed, errorMessage, eventMessage, isPageReady, MYGO_SHIM, parsePageCall, resultMessage, themeSeed, withShim, type ToPage } from '@/features/chat-web/protocol';
+import { activeScheme } from '@/theme/tokens';
 
 import type { ChatPageViewProps } from './chat-page-view';
 
 export function ChatPageView({ state, conversationId, seedDraft = '', openSubagent, onCall, onReady }: ChatPageViewProps) {
   const frame = useRef<HTMLIFrameElement | null>(null);
-  const html = useMemo(() => withShim(CHAT_PAGE_HTML, MYGO_SHIM + draftSeed(conversationId, seedDraft)), [conversationId, seedDraft]);
+  const scheme = activeScheme();
+  const html = useMemo(
+    () => withShim(CHAT_PAGE_HTML, themeSeed(scheme) + MYGO_SHIM + draftSeed(conversationId, seedDraft)),
+    [scheme, conversationId, seedDraft],
+  );
   const post = (message: ToPage) => frame.current?.contentWindow?.postMessage(JSON.stringify(message), '*');
   const latest = useRef({ state, onCall, onReady });
   latest.current = { state, onCall, onReady };
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (event.source !== frame.current?.contentWindow || typeof event.data !== 'string') return;
+      if (isPageReady(event.data)) {
+        latest.current.onReady?.();
+        return;
+      }
       const call = parsePageCall(event.data);
       if (!call) return;
       latest.current.onCall(call.method, call.args).then(
@@ -49,8 +58,8 @@ export function ChatPageView({ state, conversationId, seedDraft = '', openSubage
       srcDoc={html}
       sandbox="allow-scripts allow-same-origin allow-popups"
       onLoad={() => {
-        latest.current.onReady?.();
         if (latest.current.state) post(eventMessage('chat:updated', latest.current.state));
+        setTimeout(() => latest.current.onReady?.(), 600);
       }}
       style={{ flex: 1, width: '100%', height: '100%', border: 0, background: 'transparent' }}
     />
