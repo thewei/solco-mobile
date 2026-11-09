@@ -106,4 +106,28 @@ describe('feedback controller', () => {
     expect(feedbackFailureText(new Error('boom'))).toBe('boom');
     expect(feedbackFailureText('weird')).toBe('Something went wrong.');
   });
+  it('serves the saved copy as offline when the Mac cannot be reached, and a stated refusal as itself', async () => {
+    const { ops } = make();
+    const store = { load: vi.fn(async () => null), save: vi.fn(), caps: { manage: false, context: false }, now: () => 1000 };
+    const live = { ...snapshot, threads: [{ id: 't1', project: 'p', title: 'one', lastAt: 2, waiting: 0, askCount: 1 }] };
+    ops.snapshot.mockResolvedValueOnce(live);
+    const controller = createFeedbackController(ops, () => 'dark', { thread: 't1', ask: 'a1' }, store);
+    await controller.call('feedback.Snapshot', ['']);
+    expect(store.save).toHaveBeenCalledTimes(1);
+    ops.snapshot.mockRejectedValueOnce(new Error('Network request failed'));
+    const stale = (await controller.call('feedback.Snapshot', [''])) as { online: boolean; stale?: number; threads: unknown[]; focus?: unknown };
+    expect(stale).toMatchObject({ online: false, stale: 1000 });
+    expect(stale.threads).toHaveLength(1);
+    expect(stale.focus).toBeUndefined();
+    ops.snapshot.mockRejectedValueOnce(new HostV3Error('http', 'gone', { status: 404, code: 'feedback_not_found' }));
+    await expect(controller.call('feedback.Snapshot', [''])).rejects.toThrow('That question is no longer there.');
+  });
+
+  it('without any saved copy an unreachable Mac is still an error the page can show', async () => {
+    const { ops } = make();
+    const store = { load: vi.fn(async () => null), save: vi.fn(), caps: { manage: false, context: false } };
+    const controller = createFeedbackController(ops, () => 'dark', undefined, store);
+    ops.snapshot.mockRejectedValueOnce(new Error('Network request failed'));
+    await expect(controller.call('feedback.Snapshot', [''])).rejects.toThrow('Network request failed');
+  });
 });

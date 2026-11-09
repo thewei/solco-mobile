@@ -8,6 +8,7 @@
 // [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 // Invariants: no IO of its own (operations are injected); the landing is handed out once, with the first snapshot that
 //             actually arrives; a failed write changes nothing but the rejection the page shows.
+import { remember, replay, type FeedbackCache, type FeedbackCaps } from '@/features/feedback/cache';
 import { feedbackContextRefSchema, type FeedbackAnswer, type FeedbackAnswerRequest, type FeedbackPick, type FeedbackSnapshot } from '@/contracts/host-v3';
 
 export interface FeedbackOps {
@@ -24,6 +25,14 @@ export interface FeedbackOps {
   };
 }
 
+/** The saved copy of the inbox (IO injected): what the page shows while the Host cannot be reached. */
+export interface FeedbackStore {
+  load(): Promise<FeedbackCache | null>;
+  save(cache: FeedbackCache): void;
+  caps: FeedbackCaps;
+  now?: () => number;
+}
+
 export interface FeedbackLanding {
   thread: string;
   ask: string;
@@ -36,6 +45,8 @@ export interface FeedbackPageView extends FeedbackSnapshot {
   canOpenGit: false;
   canManage: boolean;
   canPick: boolean;
+  /** Unix ms of the saved copy this read comes from: the Host could not be reached. Absent = live. */
+  stale?: number;
 }
 
 /** The sentence the page shows for a refused write or a failed read. */
@@ -54,8 +65,33 @@ export function feedbackFailureText(error: unknown): string {
   return error instanceof Error && error.message ? error.message : 'Something went wrong.';
 }
 
-export function createFeedbackController(ops: FeedbackOps, scheme: () => 'light' | 'dark', landing?: FeedbackLanding) {
+/** A copy is written at most this often while reads keep succeeding. */
+const SAVE_EVERY_MS = 4_000;
+
+export function createFeedbackController(ops: FeedbackOps, scheme: () => 'light' | 'dark', landing?: FeedbackLanding, saved?: FeedbackStore) {
   let pending = landing;
+  const now = saved?.now ?? Date.now;
+  let copy: FeedbackCache | null = null;
+  const copyLoaded = saved ? saved.load().then((c) => { copy ??= c; }) : Promise.resolve();
+  let lastSave = -Infinity;
+  const read = async (selected: string, query: string): Promise<{ snapshot: FeedbackSnapshot; stale?: number }> => {
+    try {
+      const snapshot = await ops.snapshot(selected, query);
+      if (saved) {
+        copy = remember(copy, snapshot, query, saved.caps, now());
+        if (now() - lastSave >= SAVE_EVERY_MS) {
+          lastSave = now();
+          saved.save(copy);
+        }
+      }
+      return { snapshot };
+    } catch (error) {
+      await copyLoaded;
+      // A refusal the Host stated (unauthorized, not found, …) is shown as it is; only an unreachable Host falls back.
+      if (!copy || (typeof error === 'object' && error !== null && typeof (error as { code?: unknown }).code === 'string')) throw error;
+      return { snapshot: replay(copy, selected), stale: copy.savedAt };
+    }
+  };
   return {
     async call(method: string, args: readonly unknown[]): Promise<unknown> {
       try {
@@ -64,8 +100,12 @@ export function createFeedbackController(ops: FeedbackOps, scheme: () => 'light'
             // A pending landing names the thread to read, whatever the page last had open.
             const selected = pending?.thread ?? (typeof args[0] === 'string' ? args[0] : '');
             const query = pending ? '' : typeof args[1] === 'string' ? args[1].trim() : '';
-            const snapshot = await ops.snapshot(selected, query);
+            const { snapshot, stale } = await read(selected, query);
             const view: FeedbackPageView = { ...snapshot, theme: scheme(), canOpenGit: false, canManage: !!ops.manage, canPick: !!ops.pick };
+            if (stale) {
+              view.stale = stale;
+              return view; // the landing stays pending until a live read can honour it
+            }
             if (pending) {
               view.focus = pending;
               pending = undefined;

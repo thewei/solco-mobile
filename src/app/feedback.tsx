@@ -10,7 +10,7 @@
 // [PROTOCOL]: 变更时更新此头部，然后检查 ../CLAUDE.md
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -20,8 +20,10 @@ import { KeyboardInset } from '@/components/keyboard-inset';
 import { Fade } from '@/components/motion';
 import { Screen } from '@/components/screen';
 import { ListSkeleton } from '@/components/skeletons';
+import type { FeedbackCache } from '@/features/feedback/cache';
 import { createFeedbackController } from '@/features/feedback/controller';
 import { useBootstrapV3 } from '@/features/host/queries-v3';
+import { loadFeedbackCache, saveFeedbackCache } from '@/lib/feedback-cache-storage';
 import { useHostV3 } from '@/lib/host-v3-provider';
 import { IconInbox } from '@/theme/glyphs';
 import { activeScheme, colors } from '@/theme/tokens';
@@ -29,13 +31,27 @@ import { activeScheme, colors } from '@/theme/tokens';
 export default function FeedbackScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { client } = useHostV3();
+  const { client, activeId } = useHostV3();
   const bootstrap = useBootstrapV3();
   const params = useLocalSearchParams<{ thread?: string; ask?: string }>();
   const [readyFor, setReadyFor] = useState<string | null>(null);
-  const served = bootstrap.data?.capabilities.feedback === true;
-  const manageable = bootstrap.data?.capabilities.feedbackManage === true;
-  const pickable = bootstrap.data?.capabilities.feedbackContext === true;
+  // The saved copy of this Mac's inbox (undefined = still reading the file): what an open shows while the Mac cannot be
+  // reached, with the capabilities it was last served under so the page keeps its buttons.
+  const [saved, setSaved] = useState<FeedbackCache | null | undefined>(undefined);
+  useEffect(() => {
+    let alive = true;
+    setSaved(undefined);
+    if (activeId) void loadFeedbackCache(activeId).then((copy) => alive && setSaved(copy));
+    else setSaved(null);
+    return () => {
+      alive = false;
+    };
+  }, [activeId]);
+  // A saved copy opens the page at once; the Mac's own answer (usually a moment later) replaces the saved capabilities.
+  const offline = !bootstrap.data && !!saved;
+  const served = bootstrap.data ? bootstrap.data.capabilities.feedback === true : offline;
+  const manageable = bootstrap.data ? bootstrap.data.capabilities.feedbackManage === true : (saved?.caps.manage ?? false);
+  const pickable = bootstrap.data ? bootstrap.data.capabilities.feedbackContext === true : (saved?.caps.context ?? false);
   // A landing is a link's thread + ask. Only a new link changes the params (moving inside the page never does), so a
   // link tapped while this screen is already open (a warm start from a Feishu message) re-seats it, nothing else does.
   const landingKey = params.thread ? `${params.thread}:${params.ask ?? ''}` : '';
@@ -74,13 +90,19 @@ export default function FeedbackScreen() {
       },
       activeScheme,
       landing,
+      activeId ? { load: async () => saved ?? loadFeedbackCache(activeId), save: (copy) => void saveFeedbackCache(activeId, copy), caps: { manage: manageable, context: pickable } } : undefined,
     );
-  }, [client, queryClient, landing, manageable, pickable]);
+    // `saved` only seeds the first read of the file; the controller keeps its own copy after that.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, queryClient, landing, manageable, pickable, activeId]);
 
   let body: React.ReactNode;
   if (bootstrap.data && !served) {
     body = <EmptyState icon={IconInbox} title="No Feedback on this Mac" text="Update Solco on the computer to receive Agent questions here." action="Back" onAction={() => router.back()} />;
-  } else if (!controller || !bootstrap.data) {
+  } else if (!bootstrap.data && bootstrap.isError && saved === null) {
+    // Nothing saved to show and the Mac does not answer: say so, with a way to retry, rather than an endless skeleton.
+    body = <EmptyState icon={IconInbox} title="Can't reach your Mac" text="Feedback needs the Mac. Check that it is on and reachable, then try again." action="Try again" onAction={() => void bootstrap.refetch()} />;
+  } else if (!controller || (!bootstrap.data && !offline)) {
     body = <ListSkeleton />;
   } else {
     body = (

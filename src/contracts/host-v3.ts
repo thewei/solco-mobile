@@ -708,6 +708,8 @@ export const feedbackAskSchema = z.object({
   answers: z.record(z.string(), feedbackAnswerSchema).optional(),
   attachmentCount: z.number().int().nonnegative().optional(),
   context: z.array(feedbackContextRefSchema).optional(),
+  /** What the Agent suggests attaching (kind + name only): one-tap chips in the answer form. */
+  suggest: z.array(feedbackContextRefSchema).optional(),
   message: z.string().optional(),
   late: z.boolean().optional(),
   lateDelivered: z.boolean().optional(),
