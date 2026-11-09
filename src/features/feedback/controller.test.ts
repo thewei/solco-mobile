@@ -9,18 +9,30 @@ const snapshot: FeedbackSnapshot = { online: true, threads: [], waiting: 0, sele
 
 function make(landing?: { thread: string; ask: string }) {
   const ops = {
-    snapshot: vi.fn(async () => snapshot),
+    snapshot: vi.fn(async (_thread: string, _query: string) => snapshot),
     answer: vi.fn(async () => {}),
     end: vi.fn(async () => {}),
   };
-  return { ops, controller: createFeedbackController(ops, () => 'dark', landing) };
+  const manage = {
+    deleteThreads: vi.fn(async (ids: string[]) => ids.length),
+    cleanup: vi.fn(async () => 3),
+    setRetention: vi.fn(async () => {}),
+  };
+  return {
+    ops,
+    manage,
+    controller: createFeedbackController(ops, () => 'dark', landing),
+    managed: createFeedbackController({ ...ops, manage }, () => 'dark', landing),
+  };
 }
 
 describe('feedback controller', () => {
   it('answers Snapshot with the Host snapshot plus theme and no Git hand-off', async () => {
     const { ops, controller } = make();
-    expect(await controller.call('feedback.Snapshot', ['t_1'])).toEqual({ ...snapshot, theme: 'dark', canOpenGit: false });
-    expect(ops.snapshot).toHaveBeenCalledWith('t_1');
+    expect(await controller.call('feedback.Snapshot', ['t_1'])).toEqual({ ...snapshot, theme: 'dark', canOpenGit: false, canManage: false });
+    expect(ops.snapshot).toHaveBeenCalledWith('t_1', '');
+    await controller.call('feedback.Snapshot', ['', '  db  ']);
+    expect(ops.snapshot).toHaveBeenLastCalledWith('', 'db');
   });
 
   it('hands the landing out once, reading its thread, and keeps it until a snapshot arrives', async () => {
@@ -28,11 +40,11 @@ describe('feedback controller', () => {
     ops.snapshot.mockRejectedValueOnce(new Error('offline'));
     await expect(controller.call('feedback.Snapshot', [''])).rejects.toThrow('offline');
     const first = (await controller.call('feedback.Snapshot', [''])) as { focus?: unknown };
-    expect(ops.snapshot).toHaveBeenLastCalledWith('t_9');
+    expect(ops.snapshot).toHaveBeenLastCalledWith('t_9', '');
     expect(first.focus).toEqual({ thread: 't_9', ask: 'a_9' });
     const second = (await controller.call('feedback.Snapshot', ['t_9'])) as { focus?: unknown };
     expect(second.focus).toBeUndefined();
-    expect(ops.snapshot).toHaveBeenLastCalledWith('t_9');
+    expect(ops.snapshot).toHaveBeenLastCalledWith('t_9', '');
   });
 
   it('forwards an answer with its attachments only when there are some, and ends an Ask', async () => {
@@ -44,6 +56,20 @@ describe('feedback controller', () => {
     expect(ops.answer).toHaveBeenLastCalledWith('a_1', { answers: { q1: { selected: [] } }, attachments: [image] });
     await controller.call('feedback.End', ['a_2']);
     expect(ops.end).toHaveBeenCalledWith('a_2');
+  });
+
+  it('manages the inbox only when the Host offers it, and checks every argument first', async () => {
+    const { controller, managed, manage } = make();
+    await expect(controller.call('feedback.DeleteThreads', [['t_1']])).rejects.toThrow('does not manage');
+    expect(((await managed.call('feedback.Snapshot', [''])) as { canManage: boolean }).canManage).toBe(true);
+    expect(await managed.call('feedback.DeleteThreads', [['t_1', 't_2']])).toBe(2);
+    expect(await managed.call('feedback.Cleanup', [30, true])).toBe(3);
+    expect(manage.cleanup).toHaveBeenLastCalledWith(30, true);
+    await managed.call('feedback.SetRetention', [90]);
+    expect(manage.setRetention).toHaveBeenCalledWith(90);
+    await expect(managed.call('feedback.DeleteThreads', [[]])).rejects.toThrow('Bad request.');
+    await expect(managed.call('feedback.Cleanup', [0, false])).rejects.toThrow('Bad request.');
+    await expect(managed.call('feedback.SetRetention', ['x'])).rejects.toThrow('Bad request.');
   });
 
   it('refuses a malformed call before the Host, and what a phone cannot do', async () => {

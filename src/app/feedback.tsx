@@ -34,6 +34,7 @@ export default function FeedbackScreen() {
   const params = useLocalSearchParams<{ thread?: string; ask?: string }>();
   const [readyFor, setReadyFor] = useState<string | null>(null);
   const served = bootstrap.data?.capabilities.feedback === true;
+  const manageable = bootstrap.data?.capabilities.feedbackManage === true;
   // A landing is a link's thread + ask. Only a new link changes the params (moving inside the page never does), so a
   // link tapped while this screen is already open (a warm start from a Feishu message) re-seats it, nothing else does.
   const landingKey = params.thread ? `${params.thread}:${params.ask ?? ''}` : '';
@@ -44,7 +45,7 @@ export default function FeedbackScreen() {
     if (!client) return null;
     return createFeedbackController(
       {
-        snapshot: (thread) => client.feedback(thread || undefined),
+        snapshot: (thread, query) => client.feedback(thread || undefined, query || undefined),
         answer: async (askId, request) => {
           await client.feedbackAnswer(askId, request);
           void queryClient.invalidateQueries({ queryKey: ['v3', 'feedback'] });
@@ -53,11 +54,26 @@ export default function FeedbackScreen() {
           await client.feedbackEnd(askId);
           void queryClient.invalidateQueries({ queryKey: ['v3', 'feedback'] });
         },
+        manage: manageable
+          ? {
+              deleteThreads: async (ids) => {
+                const deleted = await client.feedbackDelete(ids);
+                void queryClient.invalidateQueries({ queryKey: ['v3', 'feedback'] });
+                return deleted;
+              },
+              cleanup: async (days, dryRun) => {
+                const count = await client.feedbackCleanup(days, dryRun);
+                if (!dryRun) void queryClient.invalidateQueries({ queryKey: ['v3', 'feedback'] });
+                return count;
+              },
+              setRetention: (days) => client.feedbackRetention(days),
+            }
+          : undefined,
       },
       activeScheme,
       landing,
     );
-  }, [client, queryClient, landing]);
+  }, [client, queryClient, landing, manageable]);
 
   let body: React.ReactNode;
   if (bootstrap.data && !served) {

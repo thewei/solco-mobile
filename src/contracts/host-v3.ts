@@ -49,7 +49,7 @@ export const bootstrapV3Schema = z.object({
   hostId: z.string(),
   hostName: z.string(),
   version: z.string(),
-  capabilities: z.object({ terminal: z.boolean(), chat: z.boolean(), launch: z.boolean().optional(), git: z.boolean().optional(), gitWrite: z.boolean().optional(), files: z.boolean().optional(), filesSearch: z.boolean().optional(), terminalControl: z.boolean().optional(), terminalHistory: z.boolean().optional(), quota: z.boolean().optional(), feedback: z.boolean().optional(), automations: z.boolean().optional(), automationsManage: z.boolean().optional(), personalAgent: z.boolean().optional(), personalAgentManage: z.boolean().optional(), personalAgentApprove: z.boolean().optional(), personalAgentGroups: z.boolean().optional(), personalAgentGroupArchive: z.boolean().optional(), personalAgentPersona: z.boolean().optional(), personalAgentPlans: z.boolean().optional(), personalAgentRoutines: z.boolean().optional(), personalAgentAutonomy: z.boolean().optional(), personalAgentMemory: z.boolean().optional(), personalAgentProactivity: z.boolean().optional(), personalAgentActivityNotices: z.boolean().optional(), personalAgentCoordinatorChat: z.boolean().optional(), assistantSystemPush: z.boolean().optional(), personalAgentNarrativeReports: z.boolean().optional(), sessions: z.boolean().optional(), sessionContinue: z.boolean().optional(), sessionTrash: z.boolean().optional(), voice: z.boolean().optional(), attachments: z.boolean().optional(), queue: z.boolean().optional(), queueEdit: z.boolean().optional(), devices: z.boolean().optional(), remoteDesktop: z.boolean().optional(), p2p: z.boolean().optional() }),
+  capabilities: z.object({ terminal: z.boolean(), chat: z.boolean(), launch: z.boolean().optional(), git: z.boolean().optional(), gitWrite: z.boolean().optional(), files: z.boolean().optional(), filesSearch: z.boolean().optional(), terminalControl: z.boolean().optional(), terminalHistory: z.boolean().optional(), quota: z.boolean().optional(), feedback: z.boolean().optional(), feedbackManage: z.boolean().optional(), automations: z.boolean().optional(), automationsManage: z.boolean().optional(), personalAgent: z.boolean().optional(), personalAgentManage: z.boolean().optional(), personalAgentApprove: z.boolean().optional(), personalAgentGroups: z.boolean().optional(), personalAgentGroupArchive: z.boolean().optional(), personalAgentPersona: z.boolean().optional(), personalAgentPlans: z.boolean().optional(), personalAgentRoutines: z.boolean().optional(), personalAgentAutonomy: z.boolean().optional(), personalAgentMemory: z.boolean().optional(), personalAgentProactivity: z.boolean().optional(), personalAgentActivityNotices: z.boolean().optional(), personalAgentCoordinatorChat: z.boolean().optional(), assistantSystemPush: z.boolean().optional(), personalAgentNarrativeReports: z.boolean().optional(), sessions: z.boolean().optional(), sessionContinue: z.boolean().optional(), sessionTrash: z.boolean().optional(), voice: z.boolean().optional(), attachments: z.boolean().optional(), queue: z.boolean().optional(), queueEdit: z.boolean().optional(), devices: z.boolean().optional(), remoteDesktop: z.boolean().optional(), p2p: z.boolean().optional() }),
   /** Herdr sessions of the Mac, plus (`capabilities.devices`) the Mac's saved machines as `kind: 'device'` entries with a status. */
   instances: z.array(z.object({ id: z.string().min(1), kind: z.literal('device').optional(), label: z.string().optional(), status: z.string().optional() })),
   /** What POST /launch accepts, `terminal` first; present only when `capabilities.launch`. */
@@ -738,6 +738,8 @@ export const feedbackThreadSchema = z.object({
   title: z.string(),
   explicitId: z.string().optional(),
   taskId: z.string().optional(),
+  /** The user's original request (Markdown), given by the Agent with the thread's first ask. */
+  task: z.string().optional(),
   createdAt: z.number().int().nonnegative(),
   lastAt: z.number().int().nonnegative(),
   waiting: z.number().int().nonnegative(),
@@ -752,6 +754,8 @@ export const feedbackSnapshotSchema = z.object({
   waiting: z.number().int().nonnegative(),
   selected: z.string(),
   detail: feedbackThreadSchema.optional(),
+  /** How many days finished threads are kept (absent = forever). */
+  retentionDays: z.number().int().nonnegative().optional(),
 });
 export type FeedbackSnapshot = z.infer<typeof feedbackSnapshotSchema>;
 
@@ -761,6 +765,16 @@ export const feedbackAnswerRequestSchema = z.object({
   attachments: z.array(z.object({ mimeType: z.string(), dataBase64: z.string(), name: z.string().optional() })).optional(),
 });
 export type FeedbackAnswerRequest = z.infer<typeof feedbackAnswerRequestSchema>;
+
+// Inbox management (needs `capabilities.feedbackManage`): a thread an Agent still waits on is never deleted.
+/** POST /feedback/threads/delete */
+export const feedbackDeleteRequestSchema = z.object({ ids: z.array(z.string()).min(1).max(500) });
+export const feedbackDeleteResultSchema = z.object({ ok: z.literal(true), deleted: z.number().int().nonnegative() });
+/** POST /feedback/threads/cleanup: `dryRun` only counts (`matched`); otherwise `deleted` threads went. */
+export const feedbackCleanupRequestSchema = z.object({ olderThanDays: z.number().int().min(1).max(3650), dryRun: z.boolean().optional() });
+export const feedbackCleanupResultSchema = z.object({ ok: z.literal(true), matched: z.number().int().nonnegative(), deleted: z.number().int().nonnegative() });
+/** POST /feedback/retention: days finished threads are kept, 0 = forever. */
+export const feedbackRetentionRequestSchema = z.object({ days: z.number().int().min(0).max(3650) });
 
 // ---- Automations (read-only; present only when `capabilities.automations`) ----
 // The Mac's plugin is the authority; this is its list as the desktop page shows it, without prompts,

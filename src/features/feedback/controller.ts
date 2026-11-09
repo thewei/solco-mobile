@@ -1,7 +1,7 @@
-// [INPUT]: the paired Host client's three Feedback operations, the app's colour scheme, and an optional landing (a
+// [INPUT]: the paired Host client's Feedback operations (and, when the Host offers them, the inbox management ones), the app's colour scheme, and an optional landing (a
 //          notification tap or link naming a thread and an Ask).
 // [OUTPUT]: `createFeedbackController` — answers the shared Feedback page's `feedback.*` bridge calls
-//           (Snapshot/Answer/End/OpenProject), and `feedbackFailureText` (a Host refusal in the sentence the page shows).
+//           (Snapshot/Answer/End/DeleteThreads/Cleanup/SetRetention/OpenProject), and `feedbackFailureText` (a Host refusal in the sentence the page shows).
 // [POS]: the phone's counterpart of the desktop `FeedbackBridge` Go service (solco internal/nativeui/feedback_bridge.go),
 //        minus "Open project" (a Mac action). The Host's `GET /feedback` already is the page's snapshot; this only adds the
 //        page's theme, the one-shot landing and the phone's `canOpenGit: false`.
@@ -11,9 +11,15 @@
 import type { FeedbackAnswer, FeedbackAnswerRequest, FeedbackSnapshot } from '@/contracts/host-v3';
 
 export interface FeedbackOps {
-  snapshot(thread: string): Promise<FeedbackSnapshot>;
+  snapshot(thread: string, query: string): Promise<FeedbackSnapshot>;
   answer(askId: string, request: FeedbackAnswerRequest): Promise<void>;
   end(askId: string): Promise<void>;
+  /** Present only when the Host advertises `capabilities.feedbackManage`; without it the page hides every management control. */
+  manage?: {
+    deleteThreads(ids: string[]): Promise<number>;
+    cleanup(days: number, dryRun: boolean): Promise<number>;
+    setRetention(days: number): Promise<void>;
+  };
 }
 
 export interface FeedbackLanding {
@@ -26,6 +32,7 @@ export interface FeedbackPageView extends FeedbackSnapshot {
   theme: 'light' | 'dark';
   focus?: FeedbackLanding;
   canOpenGit: false;
+  canManage: boolean;
 }
 
 /** The sentence the page shows for a refused write or a failed read. */
@@ -53,8 +60,9 @@ export function createFeedbackController(ops: FeedbackOps, scheme: () => 'light'
           case 'feedback.Snapshot': {
             // A pending landing names the thread to read, whatever the page last had open.
             const selected = pending?.thread ?? (typeof args[0] === 'string' ? args[0] : '');
-            const snapshot = await ops.snapshot(selected);
-            const view: FeedbackPageView = { ...snapshot, theme: scheme(), canOpenGit: false };
+            const query = pending ? '' : typeof args[1] === 'string' ? args[1].trim() : '';
+            const snapshot = await ops.snapshot(selected, query);
+            const view: FeedbackPageView = { ...snapshot, theme: scheme(), canOpenGit: false, canManage: !!ops.manage };
             if (pending) {
               view.focus = pending;
               pending = undefined;
@@ -72,6 +80,25 @@ export function createFeedbackController(ops: FeedbackOps, scheme: () => 'light'
           case 'feedback.End': {
             if (typeof args[0] !== 'string') throw new Error('Bad request.');
             await ops.end(args[0]);
+            return null;
+          }
+          case 'feedback.DeleteThreads': {
+            const ids = args[0];
+            if (!ops.manage) throw new Error('This Mac does not manage Feedback from the phone.');
+            if (!Array.isArray(ids) || ids.length === 0 || ids.some((id) => typeof id !== 'string')) throw new Error('Bad request.');
+            return ops.manage.deleteThreads(ids as string[]);
+          }
+          case 'feedback.Cleanup': {
+            const [days, dryRun] = args;
+            if (!ops.manage) throw new Error('This Mac does not manage Feedback from the phone.');
+            if (typeof days !== 'number' || !Number.isInteger(days) || days < 1) throw new Error('Bad request.');
+            return ops.manage.cleanup(days, dryRun === true);
+          }
+          case 'feedback.SetRetention': {
+            const days = args[0];
+            if (!ops.manage) throw new Error('This Mac does not manage Feedback from the phone.');
+            if (typeof days !== 'number' || !Number.isInteger(days) || days < 0) throw new Error('Bad request.');
+            await ops.manage.setRetention(days);
             return null;
           }
           case 'feedback.OpenProject':

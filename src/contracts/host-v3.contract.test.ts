@@ -34,6 +34,11 @@ import {
   quotaSchema,
   automationsSchema,
   feedbackAnswerRequestSchema,
+  feedbackCleanupRequestSchema,
+  feedbackCleanupResultSchema,
+  feedbackDeleteRequestSchema,
+  feedbackDeleteResultSchema,
+  feedbackRetentionRequestSchema,
   feedbackSnapshotSchema,
   automationDetailSchema,
   automationWriteSchema,
@@ -460,6 +465,13 @@ describe('v3 golden files', () => {
     const request = exact(feedbackAnswerRequestSchema, await load('feedback-answer-request.json'));
     expect(request.answers.q1).toEqual({ selected: ['SQLite'], custom: 'with WAL' });
     expect(exact(chatAckSchema, await load('feedback-ack.json'))).toEqual({ ok: true });
+    expect(thread.detail?.task).toContain('managed database');
+    expect(exact(feedbackDeleteRequestSchema, await load('feedback-delete-request.json')).ids).toEqual(['t_1', 't_2']);
+    expect(exact(feedbackDeleteResultSchema, await load('feedback-delete-ack.json'))).toEqual({ ok: true, deleted: 2 });
+    expect(exact(feedbackCleanupRequestSchema, await load('feedback-cleanup-request.json'))).toEqual({ olderThanDays: 30, dryRun: true });
+    expect(exact(feedbackCleanupResultSchema, await load('feedback-cleanup-ack.json'))).toEqual({ ok: true, matched: 3, deleted: 0 });
+    expect(exact(feedbackRetentionRequestSchema, await load('feedback-retention-request.json'))).toEqual({ days: 90 });
+    expect(exact(bootstrapV3Schema, await load('bootstrap-feedback.json')).capabilities.feedbackManage).toBe(true);
     expect(exact(errorBodyV3Schema, await load('error-feedback-final.json')).error.code).toBe('feedback_final');
     expect(exact(errorBodyV3Schema, await load('error-feedback-unavailable.json')).error.code).toBe('feedback_unavailable');
     expect(exact(eventMessageSchema, await load('events-feedback.json'))).toEqual({ t: 'feedback', kind: 'ask', threadId: 't_1', askId: 'a_1', waiting: 1, project: 'solco', client: 'Claude Code', preview: 'Which database should the service use?' });
