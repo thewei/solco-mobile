@@ -26,6 +26,7 @@
 //        result cards). The body is the shared Chat page; an unserved Chat or a closed pane is an explained state with a way out.
 // [PROTOCOL]: 变更时更新此头部，然后检查 ../CLAUDE.md
 import { useQueryClient } from '@tanstack/react-query';
+import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Platform, StyleSheet, View } from 'react-native';
@@ -172,6 +173,7 @@ export default function ChatScreen() {
   const { phase, frame, older: olderOnPane } = useChatStream(instance, pane, CHAT_PAGE_LIMIT);
   const maxOlderPages = Math.floor(240 / CHAT_PAGE_LIMIT);
   const older = useCallback(() => {
+    if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (pane) olderOnPane();
     else setOlderPages((pages) => Math.min(pages + 1, maxOlderPages)); // the Host's window stops at chatsession.MaxAccumulated (240)
   }, [pane, olderOnPane, maxOlderPages]);
