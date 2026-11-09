@@ -30,10 +30,13 @@ export default function FeedbackScreen() {
   const { client } = useHostV3();
   const bootstrap = useBootstrapV3();
   const params = useLocalSearchParams<{ thread?: string; ask?: string }>();
-  const [ready, setReady] = useState(false);
+  const [readyFor, setReadyFor] = useState<string | null>(null);
   const served = bootstrap.data?.capabilities.feedback === true;
-  // The landing is read once, when the screen opens: a later param change must not re-seat a thread the user moved off.
-  const [landing] = useState(() => (params.thread ? { thread: params.thread, ask: params.ask ?? '' } : undefined));
+  // A landing is a link's thread + ask. Only a new link changes the params (moving inside the page never does), so a
+  // link tapped while this screen is already open (a warm start from a Feishu message) re-seats it, nothing else does.
+  const landingKey = params.thread ? `${params.thread}:${params.ask ?? ''}` : '';
+  const landing = useMemo(() => (params.thread ? { thread: params.thread, ask: params.ask ?? '' } : undefined), [params.thread, params.ask]);
+  const ready = readyFor === landingKey;
 
   const controller = useMemo(() => {
     if (!client) return null;
@@ -61,9 +64,9 @@ export default function FeedbackScreen() {
     body = <ListSkeleton />;
   } else {
     body = (
-      <View style={{ flex: 1 }}>
+      <View key={landingKey} style={{ flex: 1 }}>
         <Fade style={StyleSheet.absoluteFill}>
-          <ChatPageView route="feedback" state={null} conversationId="feedback" onCall={controller.call} onReady={() => setReady(true)} />
+          <ChatPageView route="feedback" state={null} conversationId="feedback" onCall={controller.call} onReady={() => setReadyFor(landingKey)} />
         </Fade>
         {!ready ? (
           <Fade style={StyleSheet.absoluteFill}>
