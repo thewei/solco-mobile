@@ -62,6 +62,7 @@ import { HostV3Error } from '@/lib/host-client-v3';
 import { pickAttachment } from '@/lib/pick-attachment';
 import { useAfterTransition } from '@/lib/use-after-transition';
 import { useHostV3 } from '@/lib/host-v3-provider';
+import { useChatPrefsStore } from '@/state/chat-prefs-store';
 import { IconAlertTriangle, IconDotsVertical, IconFolder } from '@/theme/glyphs';
 import { colors, radii, spacing, type as typeScale } from '@/theme/tokens';
 
@@ -473,6 +474,7 @@ export default function ChatScreen() {
     },
     openMicrophoneSettings: () => void Linking.openSettings(),
     provider: () => (pending ? title : undefined),
+    outline: () => useChatPrefsStore.getState().chatOutline,
   };
   const controller = useMemo(
     () =>
@@ -504,6 +506,7 @@ export default function ChatScreen() {
           transcribe: (audioBase64, mime) => opsRef.current!.transcribe(audioBase64, mime),
           openMicrophoneSettings: () => opsRef.current!.openMicrophoneSettings(),
           provider: () => opsRef.current!.provider?.(),
+          outline: () => opsRef.current!.outline?.() ?? false,
         },
         setPageState,
       ),

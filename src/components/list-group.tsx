@@ -8,7 +8,7 @@
 //        CSS margins collapse (`.sect` 0 0 8, `.stitle` 14 0 7, a page's first `.sect` 12), so the gap above a Section is
 //        decided here, once, and the page's first Section says `first` instead of padding its scroll.
 // [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
-import { Pressable, View } from 'react-native';
+import { Pressable, Switch, View } from 'react-native';
 import { Text } from 'tamagui';
 
 import { Icon, type Glyph, type IconTone } from '@/components/icon';
@@ -95,6 +95,55 @@ export function ListRow({
       ) : null}
       {checked ? <Icon as={IconCheck} size="md" tone="accent" /> : chevron && onPress ? <Icon as={IconChevronRight} size="sm" tone="subtle" stroke={2.4} /> : null}
     </Pressable>
+  );
+}
+
+export function SwitchRow({
+  icon,
+  label,
+  description,
+  value,
+  onValueChange,
+  disabled = false,
+}: {
+  icon?: Glyph;
+  label: string;
+  description?: string;
+  value: boolean;
+  onValueChange: (value: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 7,
+        minHeight: description ? 63 : 49,
+        paddingVertical: 10.5,
+        paddingHorizontal: 14,
+        opacity: disabled ? 0.45 : 1,
+      }}>
+      {icon ? <Icon as={icon} size="lg" tone="text" /> : null}
+      <View style={{ flex: 1, minWidth: 0, gap: 3.5 }}>
+        <Text color={colors.text} fontSize={typeScale.body.fontSize} lineHeight={typeScale.body.lineHeight}>
+          {label}
+        </Text>
+        {description ? (
+          <Text color={colors.textMuted} fontSize={typeScale.label.fontSize} lineHeight={typeScale.label.lineHeight}>
+            {description}
+          </Text>
+        ) : null}
+      </View>
+      <Switch
+        accessibilityLabel={label}
+        value={value}
+        disabled={disabled}
+        onValueChange={onValueChange}
+        trackColor={{ false: colors.border, true: colors.accent }}
+        thumbColor="#FFFFFF"
+      />
+    </View>
   );
 }
 

@@ -64,6 +64,8 @@ export interface ChatOps {
   openMicrophoneSettings(): void;
   /** The agent's display name before any conversation states one (only the new-session draft has no frame). */
   provider?(): string | undefined;
+  /** Whether the conversation outline (TOC) rail is enabled. Default false. */
+  outline?(): boolean;
 }
 
 export interface StreamInput {
@@ -139,6 +141,7 @@ export function createChatController(paneId: string, ops: ChatOps, onChange: (st
       queuedOverride,
       canReview: ops.canReview(),
       changedFiles: ops.changedFiles?.(),
+      outline: ops.outline?.() ?? false,
       features: { ...PHONE_FEATURES, voice: ops.canVoice(), attach: ops.canAttach(), queue: ops.canQueue(), edit: ops.canQueue() && ops.canEdit(), reorder: ops.canQueue() && ops.canEdit() },
     });
     return current;

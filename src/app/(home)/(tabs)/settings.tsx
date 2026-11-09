@@ -7,13 +7,14 @@
 import { useRouter } from 'expo-router';
 import { Platform, ScrollView } from 'react-native';
 
-import { ListRow, Section } from '@/components/list-group';
+import { ListRow, Section, SwitchRow } from '@/components/list-group';
 import { Screen } from '@/components/screen';
 import { useHostAutomations, useHostFeedback, useHostInstance, usePersonalAgentOverview, useTreeV3 } from '@/features/host/queries-v3';
 import { APPEARANCE_LABEL } from '@/lib/appearance';
 import { useHostV3 } from '@/lib/host-v3-provider';
 import { useAppearanceStore } from '@/state/appearance-store';
-import { IconBell, IconClock, IconDeviceDesktop, IconDeviceLaptop, IconFolders, IconInbox, IconPalette, IconSparkles } from '@/theme/glyphs';
+import { useChatPrefsStore } from '@/state/chat-prefs-store';
+import { IconBell, IconBookmark, IconClock, IconDeviceDesktop, IconDeviceLaptop, IconFolders, IconInbox, IconPalette, IconSparkles } from '@/theme/glyphs';
 
 
 const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
@@ -21,6 +22,7 @@ const plural = (count: number, one: string, many = `${one}s`) => `${count} ${cou
 export default function SettingsScreen() {
   const router = useRouter();
   const appearance = useAppearanceStore((state) => state.appearance);
+  const { chatOutline, setChatOutline } = useChatPrefsStore();
   const { hosts } = useHostV3();
   const { bootstrap, instance } = useHostInstance();
   const caps = bootstrap.data?.capabilities;
@@ -63,6 +65,13 @@ export default function SettingsScreen() {
         ) : null}
         <Section title="App">
           <ListRow icon={IconPalette} label="Appearance" detail={APPEARANCE_LABEL[appearance]} onPress={() => router.push('/appearance')} />
+          <SwitchRow
+            icon={IconBookmark}
+            label="Conversation outline (TOC)"
+            description="TOC tick rail beside messages"
+            value={chatOutline}
+            onValueChange={setChatOutline}
+          />
         </Section>
       </ScrollView>
     </Screen>

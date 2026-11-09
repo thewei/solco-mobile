@@ -25,6 +25,7 @@ import { ShareBridge } from '@/features/share/share-bridge';
 import { resolveScheme } from '@/lib/appearance';
 import { HostV3Provider, useHostV3 } from '@/lib/host-v3-provider';
 import { hydrateAppearance, useAppearanceStore } from '@/state/appearance-store';
+import { hydrateChatPrefs } from '@/state/chat-prefs-store';
 import { hydrateResultsSeen } from '@/state/results-store';
 import { hydrateLaunchPick } from '@/state/session-store';
 import { useAppFonts } from '@/theme/fonts';
@@ -100,6 +101,7 @@ export default function RootLayout() {
     void hydrateLaunchPick(); // the Home composer's last Agent/Terminal pick, from the previous run
     void hydrateResultsSeen(); // which task-result cards were already dismissed
     void hydrateAppearance(); // System / Light / Dark, from the previous run
+    void hydrateChatPrefs(); // Chat preferences (TOC outline rail)
   }, []);
   useEffect(() => {
     // Native chrome (dialogs, keyboard, pickers) follows the person's choice, not only the system's.

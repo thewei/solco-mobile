@@ -189,6 +189,8 @@ export interface PageInput {
   /** Rows as just edited/moved, shown while the frame still carries `base` (its items, serialized). */
   queuedOverride?: { base: string; items: NonNullable<PageState['queuedItems']> };
   /** What the page may offer; the phone default hides everything the Host does not serve. */
+  /** Whether the conversation outline (TOC) rail is enabled. Default false. */
+  outline?: boolean;
   features?: PageFeatures;
   /** The agent's display name while no conversation states one (the new-session draft). */
   provider?: string;
@@ -224,7 +226,7 @@ function changedFilesOf(input: PageInput): Pick<PageState, 'changedFiles'> {
 
 export function toPageState(input: PageInput): PageState {
   const { frame } = input;
-  const base = { seq: input.seq, conversationId: input.paneId, theme: activeScheme(), outline: true, features: input.features ?? PHONE_FEATURES };
+  const base = { seq: input.seq, conversationId: input.paneId, theme: activeScheme(), outline: input.outline ?? false, features: input.features ?? PHONE_FEATURES };
   if (!frame) {
     return {
       ...base,

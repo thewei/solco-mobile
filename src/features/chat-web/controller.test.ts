@@ -107,7 +107,8 @@ describe('toPageState', () => {
 
   it('switches off what the phone cannot do: nothing it has no data for', () => {
     const s = toPageState({ paneId: 'p', seq: 1, frame: frame() });
-    expect(s.outline).toBe(true); // the tick rail is the phone's too
+    expect(s.outline).toBe(false); // default off, can be enabled via settings
+    expect(toPageState({ paneId: 'p', seq: 1, frame: frame(), outline: true }).outline).toBe(true);
     expect(s.features).toEqual({ voice: false, attach: false, queue: false, edit: false, reorder: false, subagentDrawer: true });
     expect(s).not.toHaveProperty('canReview');
     expect(s).not.toHaveProperty('hasOlder');
