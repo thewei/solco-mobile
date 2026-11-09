@@ -157,9 +157,11 @@ export default function ChatScreen() {
   const filesServed = bootstrap.data?.capabilities.files === true;
   // The Coordinator's previous conversation, looked at again while no pane carries the chat.
   const historyServed = bootstrap.data?.capabilities.personalAgentCoordinatorChat === true;
+  // Mobile chat window limit: 15 turns per page (fast initial load, smaller bridge payload).
+  const CHAT_PAGE_LIMIT = 15;
   // "Earlier messages" of that window = a longer read of the same conversation (pages walked up so far).
   const [olderPages, setOlderPages] = useState(0);
-  const history = useCoordinatorChat(offlineId, offlineId !== '' && historyServed && !pane, olderPages);
+  const history = useCoordinatorChat(offlineId, offlineId !== '' && historyServed && !pane, olderPages, CHAT_PAGE_LIMIT);
   const historyFrame = useMemo(() => (history.data ? coordinatorHistoryFrame(history.data) : null), [history.data]);
   const manageServed = bootstrap.data?.capabilities.personalAgentManage === true;
   const memoryServed = bootstrap.data?.capabilities.personalAgentMemory === true;
@@ -167,7 +169,7 @@ export default function ChatScreen() {
   // The same read feeds the dock above the page (approvals, result cards), so it also runs — slower — while a pane carries the chat.
   const windowDetail = useAssistantDetail(offlineId, offlineId !== '' && !launching, pane ? 10_000 : 5000);
   const canDecide = bootstrap.data?.capabilities.personalAgentApprove === true;
-  const { phase, frame, older: olderOnPane } = useChatStream(instance, pane);
+  const { phase, frame, older: olderOnPane } = useChatStream(instance, pane, CHAT_PAGE_LIMIT);
   const older = useCallback(() => {
     if (pane) olderOnPane();
     else setOlderPages((pages) => Math.min(pages + 1, 4)); // the Host's window stops at four pages up

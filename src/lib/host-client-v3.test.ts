@@ -346,6 +346,12 @@ describe('chat', () => {
       { code: 1006, reason: 'lost', gone: false, noConversation: false },
     ]);
   });
+
+  it('appends limit query param when provided', () => {
+    const { transport, sockets } = fakeTransport(() => ok('{}'));
+    createHostClientV3(transport, connection).openChat('default', 'w1:p1', { onFrame: () => {}, onClose: () => {} }, 15);
+    expect(sockets[0]!.url).toBe('wss://192.168.1.20:7788/api/v3/panes/w1%3Ap1/chat/stream?instance=default&limit=15');
+  });
 });
 
 describe('OMP Chat delta stream recovery', () => {

@@ -493,11 +493,11 @@ export function useAssistantDetail(id: string, enabled: boolean, pollMs?: number
  * desktop's own preview asks the same way. null data = it has none yet. `older` = pages the window is walked up ("Earlier
  * messages"); the page already shown stays on screen while the longer one loads.
  */
-export function useCoordinatorChat(id: string, enabled: boolean, older = 0) {
+export function useCoordinatorChat(id: string, enabled: boolean, older = 0, limit?: number) {
   const { client } = useHostV3();
   const query = useQuery({
-    queryKey: ['v3', 'personal-agent', 'coordinator-chat', id, older],
-    queryFn: () => client!.coordinatorChat(id, older),
+    queryKey: ['v3', 'personal-agent', 'coordinator-chat', id, older, limit],
+    queryFn: () => client!.coordinatorChat(id, older, limit),
     enabled: client !== null && enabled && id !== '',
     staleTime: 0,
     gcTime: 30_000,
@@ -881,7 +881,7 @@ export type ChatPhase = 'connecting' | 'live' | 'reconnecting' | 'none' | 'gone'
  * reconnect needs no replay. 4409 (no readable session yet) and 4404 (pane gone) end the follow;
  * any other close reconnects with a capped backoff.
  */
-export function useChatStream(instance: string | null, paneId: string | null) {
+export function useChatStream(instance: string | null, paneId: string | null, limit?: number) {
   const { client } = useHostV3();
   const [phase, setPhase] = useState<ChatPhase>('connecting');
   const [frame, setFrame] = useState<ChatFrame | null>(null);
@@ -963,7 +963,7 @@ export function useChatStream(instance: string | null, paneId: string | null) {
           if (gotFrame) return retry();
           probe(ticket);
         },
-      });
+      }, limit);
     };
     connect();
     return () => {
@@ -973,7 +973,7 @@ export function useChatStream(instance: string | null, paneId: string | null) {
       if (timer) clearTimeout(timer);
       socket?.close();
     };
-  }, [client, instance, paneId]);
+  }, [client, instance, paneId, limit]);
 
   return { phase, frame, older };
 }

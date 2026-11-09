@@ -453,7 +453,7 @@ export interface HostClientV3 {
   /** One-shot read of the pane's conversation; a 409 `no_conversation` is an HostV3Error with that code. */
   chat(instance: string, paneId: string): Promise<ChatResponse>;
   /** `older()` asks this stream for the previous page of its window (the next frame carries it; per socket, a reconnect starts at the newest page). */
-  openChat(instance: string, paneId: string, handlers: ChatHandlers): { close(): void; older(): void };
+  openChat(instance: string, paneId: string, handlers: ChatHandlers, limit?: number): { close(): void; older(): void };
   /** Herdr-gated: refusals (busy, needs_terminal, not_ready, no_agent, refused, delivery_uncertain) arrive as HostV3Error.code. */
   /** The agent's own `/` `$` rows and models for the composer (read-only on the Mac). */
   chatCatalog(instance: string, paneId: string): Promise<ChatCatalog>;
@@ -542,7 +542,7 @@ export interface HostClientV3 {
    * for it, so a stopped Assistant's page can show what it said last. null = it has none yet (409 `no_conversation`).
    */
   /** `older` walks the window that many pages up the conversation (the Host opens a fresh reader per request; capped there). */
-  coordinatorChat(id: string, older?: number): Promise<CoordinatorChat | null>;
+  coordinatorChat(id: string, older?: number, limit?: number): Promise<CoordinatorChat | null>;
   /** What needs a person, ranked by the core; one Assistant or all of them. */
   assistantInbox(assistantId?: string): Promise<AssistantInboxItem[]>;
   /** Pending approvals of one Assistant, or of all of them. */
@@ -769,7 +769,7 @@ export function createHostClientV3(transport: PinnedTransport | null, connection
 
     chat: (instance, paneId) => get(`/panes/${q(paneId)}/chat?instance=${q(instance)}`, chatResponseSchema, 'chat'),
 
-    openChat(instance, paneId, handlers) {
+    openChat(instance, paneId, handlers, limit) {
       let last: ChatFrame | null = null;
       let awaitingSnapshot = false;
       const snapshot = () => {
@@ -778,7 +778,8 @@ export function createHostClientV3(transport: PinnedTransport | null, connection
           socket.sendText('{"t":"snapshot"}');
         }
       };
-      const socket = openSocket(`${wsBase}${V3_API_PREFIX}/panes/${q(paneId)}/chat/stream?instance=${q(instance)}`, {
+      const limitParam = limit && limit > 0 ? `&limit=${limit}` : '';
+      const socket = openSocket(`${wsBase}${V3_API_PREFIX}/panes/${q(paneId)}/chat/stream?instance=${q(instance)}${limitParam}`, {
         onText(text) {
           try {
             const parsed = chatWireFrameSchema.safeParse(JSON.parse(text));
@@ -929,11 +930,16 @@ export function createHostClientV3(transport: PinnedTransport | null, connection
     markAutomationSeen: (target) => slowPostJson('/automations/seen', JSON.stringify(target), automationsSchema, 'automation', AUTOMATION_TIMEOUT_MS),
     personalAgentOverview: () => get('/personal-agent/overview', assistantOverviewSchema, 'assistants'),
     assistantDetail: (id) => get(`/personal-agent/assistants/${q(id)}`, assistantDetailSchema, 'assistants'),
-    coordinatorChat: (id, older = 0) =>
-      get(`/personal-agent/assistants/${q(id)}/coordinator/chat${older > 0 ? `?older=${older}` : ''}`, coordinatorChatSchema, 'assistants').catch((failure: unknown) => {
+    coordinatorChat: (id, older = 0, limit) => {
+      const parts: string[] = [];
+      if (older > 0) parts.push(`older=${older}`);
+      if (limit && limit > 0) parts.push(`limit=${limit}`);
+      const qs = parts.length > 0 ? `?${parts.join('&')}` : '';
+      return get(`/personal-agent/assistants/${q(id)}/coordinator/chat${qs}`, coordinatorChatSchema, 'assistants').catch((failure: unknown) => {
         if (failure instanceof HostV3Error && failure.code === 'no_conversation') return null;
         throw failure;
-      }),
+      });
+    },
     assistantInbox: async (assistantId) =>
       (await get(`/personal-agent/inbox${assistantId ? `?assistant=${q(assistantId)}` : ''}`, assistantInboxSchema, 'assistants')).items,
     assistantApprovals: async (assistantId) =>
