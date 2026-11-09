@@ -1,5 +1,5 @@
 // [INPUT]: expo-file-system (the app's private document folder), imported lazily so nothing here needs a native module at test time.
-// [OUTPUT]: `loadFeedbackCache(hostId)` / `saveFeedbackCache(hostId, cache)` — the Feedback inbox's saved copy per paired Mac, across app restarts.
+// [OUTPUT]: `loadFeedbackCache(hostId)` / `saveFeedbackCache(hostId, cache)` / `forgetFeedbackCache(hostId)` (unpairing a Mac) — the Feedback inbox's saved copy per paired Mac, across app restarts.
 // [POS]: native twin (`feedback-cache-storage.web.ts` is the browser one). Agent questions the Host already showed this phone, in the
 //        app's private folder; not SecureStore (too large, not a credential).
 // [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -19,6 +19,15 @@ export async function loadFeedbackCache(hostId: string): Promise<FeedbackCache |
     return f.exists ? parseFeedbackCache(await f.text()) : null;
   } catch {
     return null;
+  }
+}
+
+export async function forgetFeedbackCache(hostId: string): Promise<void> {
+  try {
+    const f = await file(hostId);
+    if (f.exists) f.delete();
+  } catch {
+    // an unreadable file only means an old copy stays until the app data is cleared
   }
 }
 

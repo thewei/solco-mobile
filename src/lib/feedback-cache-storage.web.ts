@@ -1,5 +1,5 @@
 // [INPUT]: the browser's localStorage.
-// [OUTPUT]: `loadFeedbackCache(hostId)` / `saveFeedbackCache(hostId, cache)` — same contract as the native module.
+// [OUTPUT]: `loadFeedbackCache(hostId)` / `saveFeedbackCache(hostId, cache)` / `forgetFeedbackCache(hostId)` — same contract as the native module.
 // [POS]: Web/PWA twin of `feedback-cache-storage.ts`.
 // [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 import { parseFeedbackCache, serializeFeedbackCache, type FeedbackCache } from '@/features/feedback/cache';
@@ -11,6 +11,14 @@ export async function loadFeedbackCache(hostId: string): Promise<FeedbackCache |
     return parseFeedbackCache(globalThis.localStorage?.getItem(key(hostId)));
   } catch {
     return null;
+  }
+}
+
+export async function forgetFeedbackCache(hostId: string): Promise<void> {
+  try {
+    globalThis.localStorage?.removeItem(key(hostId));
+  } catch {
+    // nothing to remove
   }
 }
 

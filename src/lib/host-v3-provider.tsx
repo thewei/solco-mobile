@@ -56,6 +56,7 @@ import { describeRouteChange, p2pAfterTrouble, p2pBeatsRelay, P2P_SLOWER_HOLD_MS
 import { getCreatePeer } from '@/lib/p2p-native';
 import { openP2PRoute, type OpenP2PRoute } from '@/lib/p2p-session';
 import { useRouteNotice } from '@/state/route-notice-store';
+import { forgetFeedbackCache } from '@/lib/feedback-cache-storage';
 import { readPhoneNetwork } from '@/lib/phone-network';
 import { getPinnedTransport } from '@/lib/pinned-transport-native';
 import { useSessionStore } from '@/state/session-store';
@@ -274,6 +275,8 @@ export function HostV3Provider({ children }: PropsWithChildren) {
       const wasActive = bookRef.current.activeId === id;
       if (wasActive) await resetServerState();
       await commit(removeHost(bookRef.current, id));
+      // The saved copy of that Mac's Feedback inbox goes with its pairing.
+      void forgetFeedbackCache(id);
     },
     [commit, ensureLoaded, resetServerState],
   );
