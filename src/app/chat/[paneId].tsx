@@ -170,10 +170,11 @@ export default function ChatScreen() {
   const windowDetail = useAssistantDetail(offlineId, offlineId !== '' && !launching, pane ? 10_000 : 5000);
   const canDecide = bootstrap.data?.capabilities.personalAgentApprove === true;
   const { phase, frame, older: olderOnPane } = useChatStream(instance, pane, CHAT_PAGE_LIMIT);
+  const maxOlderPages = Math.floor(240 / CHAT_PAGE_LIMIT);
   const older = useCallback(() => {
     if (pane) olderOnPane();
-    else setOlderPages((pages) => Math.min(pages + 1, 4)); // the Host's window stops at four pages up
-  }, [pane, olderOnPane]);
+    else setOlderPages((pages) => Math.min(pages + 1, maxOlderPages)); // the Host's window stops at chatsession.MaxAccumulated (240)
+  }, [pane, olderOnPane, maxOlderPages]);
   const tree = useTreeV3(instance || null);
   // One scan of the tree answers everything the header shows: the pane, its Workspace, its agent's meta.
   const located = useMemo(
