@@ -12,9 +12,11 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ChatPageView } from '@/components/chat/chat-page-view';
 import { EmptyState } from '@/components/empty-state';
+import { KeyboardInset } from '@/components/keyboard-inset';
 import { Fade } from '@/components/motion';
 import { Screen } from '@/components/screen';
 import { ListSkeleton } from '@/components/skeletons';
@@ -81,7 +83,10 @@ export default function FeedbackScreen() {
 
   return (
     <Screen back title="Feedback">
-      {body}
+      {/* Edge-to-edge Android never resizes the window: the answer field would sit under the keyboard (Chat does the same). */}
+      <SafeAreaView edges={['bottom']} style={{ flex: 1, backgroundColor: colors.canvas }}>
+        <KeyboardInset>{body}</KeyboardInset>
+      </SafeAreaView>
     </Screen>
   );
 }
