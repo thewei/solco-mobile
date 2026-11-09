@@ -626,7 +626,7 @@ export default function ChatScreen() {
           ) : null}
           {!pageReady ? (
             <Fade style={StyleSheet.absoluteFill}>
-              <View accessibilityRole="progressbar" accessibilityLabel="Loading chat" style={{ flex: 1, gap: 14, padding: spacing.screen, backgroundColor: colors.canvas }}>
+              <View accessibilityRole="progressbar" accessibilityLabel="Loading chat" pointerEvents="none" style={{ flex: 1, gap: 14, padding: spacing.screen, backgroundColor: colors.canvas }}>
                 <View style={{ alignSelf: 'flex-end', width: '72%' }}>
                   <Skeleton height={64} radius={radii.bubble} />
                 </View>
