@@ -1,19 +1,21 @@
 // [INPUT]: the paired Host client's Feedback operations (and, when the Host offers them, the inbox management ones), the app's colour scheme, and an optional landing (a
 //          notification tap or link naming a thread and an Ask).
 // [OUTPUT]: `createFeedbackController` — answers the shared Feedback page's `feedback.*` bridge calls
-//           (Snapshot/Answer/End/DeleteThreads/Cleanup/SetRetention/OpenProject), and `feedbackFailureText` (a Host refusal in the sentence the page shows).
+//           (Snapshot/Answer[+context refs]/PickContext/End/DeleteThreads/Cleanup/SetRetention/OpenProject), and `feedbackFailureText` (a Host refusal in the sentence the page shows).
 // [POS]: the phone's counterpart of the desktop `FeedbackBridge` Go service (solco internal/nativeui/feedback_bridge.go),
 //        minus "Open project" (a Mac action). The Host's `GET /feedback` already is the page's snapshot; this only adds the
 //        page's theme, the one-shot landing and the phone's `canOpenGit: false`.
 // [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 // Invariants: no IO of its own (operations are injected); the landing is handed out once, with the first snapshot that
 //             actually arrives; a failed write changes nothing but the rejection the page shows.
-import type { FeedbackAnswer, FeedbackAnswerRequest, FeedbackSnapshot } from '@/contracts/host-v3';
+import { feedbackContextRefSchema, type FeedbackAnswer, type FeedbackAnswerRequest, type FeedbackPick, type FeedbackSnapshot } from '@/contracts/host-v3';
 
 export interface FeedbackOps {
   snapshot(thread: string, query: string): Promise<FeedbackSnapshot>;
   answer(askId: string, request: FeedbackAnswerRequest): Promise<void>;
   end(askId: string): Promise<void>;
+  /** The answer form's file / Skill picker; present only when the Host advertises `capabilities.feedbackContext`. */
+  pick?(thread: string, kind: 'files' | 'skills', query: string): Promise<FeedbackPick['items']>;
   /** Present only when the Host advertises `capabilities.feedbackManage`; without it the page hides every management control. */
   manage?: {
     deleteThreads(ids: string[]): Promise<number>;
@@ -33,6 +35,7 @@ export interface FeedbackPageView extends FeedbackSnapshot {
   focus?: FeedbackLanding;
   canOpenGit: false;
   canManage: boolean;
+  canPick: boolean;
 }
 
 /** The sentence the page shows for a refused write or a failed read. */
@@ -62,7 +65,7 @@ export function createFeedbackController(ops: FeedbackOps, scheme: () => 'light'
             const selected = pending?.thread ?? (typeof args[0] === 'string' ? args[0] : '');
             const query = pending ? '' : typeof args[1] === 'string' ? args[1].trim() : '';
             const snapshot = await ops.snapshot(selected, query);
-            const view: FeedbackPageView = { ...snapshot, theme: scheme(), canOpenGit: false, canManage: !!ops.manage };
+            const view: FeedbackPageView = { ...snapshot, theme: scheme(), canOpenGit: false, canManage: !!ops.manage, canPick: !!ops.pick };
             if (pending) {
               view.focus = pending;
               pending = undefined;
@@ -70,10 +73,15 @@ export function createFeedbackController(ops: FeedbackOps, scheme: () => 'light'
             return view;
           }
           case 'feedback.Answer': {
-            const [askId, answers, attachments] = args;
+            const [askId, answers, attachments, context] = args;
             if (typeof askId !== 'string' || typeof answers !== 'object' || answers === null) throw new Error('Bad request.');
             const request: FeedbackAnswerRequest = { answers: answers as Record<string, FeedbackAnswer> };
             if (Array.isArray(attachments) && attachments.length > 0) request.attachments = attachments as NonNullable<FeedbackAnswerRequest['attachments']>;
+            if (Array.isArray(context) && context.length > 0) {
+              const refs = context.map((ref) => feedbackContextRefSchema.safeParse({ kind: (ref as { kind?: unknown })?.kind, name: (ref as { name?: unknown })?.name }));
+              if (refs.some((r) => !r.success)) throw new Error('Bad request.');
+              request.context = refs.flatMap((r) => (r.success ? [r.data] : []));
+            }
             await ops.answer(askId, request);
             return null;
           }
@@ -81,6 +89,12 @@ export function createFeedbackController(ops: FeedbackOps, scheme: () => 'light'
             if (typeof args[0] !== 'string') throw new Error('Bad request.');
             await ops.end(args[0]);
             return null;
+          }
+          case 'feedback.PickContext': {
+            const [thread, kind, query] = args;
+            if (!ops.pick) throw new Error('This Mac does not offer the file picker to the phone.');
+            if (typeof thread !== 'string' || (kind !== 'files' && kind !== 'skills') || typeof query !== 'string') throw new Error('Bad request.');
+            return ops.pick(thread, kind, query);
           }
           case 'feedback.DeleteThreads': {
             const ids = args[0];

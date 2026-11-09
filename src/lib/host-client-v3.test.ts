@@ -231,6 +231,11 @@ describe('chat', () => {
     expect(write.requests[0]).toMatchObject({ method: 'POST', url: 'https://192.168.1.20:7788/api/v3/feedback/asks/a%201/answer', body: '{"answers":{"q1":{"selected":["SQLite"]}}}' });
     await writer.feedbackEnd('a_2');
     expect(write.requests[1]).toMatchObject({ method: 'POST', url: 'https://192.168.1.20:7788/api/v3/feedback/asks/a_2/end' });
+    const pick = fakeTransport(() => ok(fixture('feedback-context.json')));
+    expect(await createHostClientV3(pick.transport, connection).feedbackPick('t 1', 'skills', 'a b')).toEqual([{ kind: 'skill', name: 'think', detail: 'Plan before coding' }]);
+    expect(pick.requests[0]?.url).toBe('https://192.168.1.20:7788/api/v3/feedback/context?thread=t%201&kind=skills&q=a%20b');
+    await writer.feedbackAnswer('a_3', { answers: { q1: { selected: ['x'] } }, context: [{ kind: 'file', name: 'docs/api.md' }] });
+    expect(write.requests[2]).toMatchObject({ body: '{"answers":{"q1":{"selected":["x"]}},"context":[{"kind":"file","name":"docs/api.md"}]}' });
     const del = fakeTransport(() => ok(fixture('feedback-delete-ack.json')));
     expect(await createHostClientV3(del.transport, connection).feedbackDelete(['t_1', 't_2'])).toBe(2);
     expect(del.requests[0]).toMatchObject({ method: 'POST', url: 'https://192.168.1.20:7788/api/v3/feedback/threads/delete', body: '{"ids":["t_1","t_2"]}' });
@@ -238,7 +243,7 @@ describe('chat', () => {
     expect(await createHostClientV3(clean.transport, connection).feedbackCleanup(30, true)).toBe(3);
     expect(clean.requests[0]).toMatchObject({ url: 'https://192.168.1.20:7788/api/v3/feedback/threads/cleanup', body: '{"olderThanDays":30,"dryRun":true}' });
     await writer.feedbackRetention(90);
-    expect(write.requests[2]).toMatchObject({ url: 'https://192.168.1.20:7788/api/v3/feedback/retention', body: '{"days":90}' });
+    expect(write.requests[3]).toMatchObject({ url: 'https://192.168.1.20:7788/api/v3/feedback/retention', body: '{"days":90}' });
     const final = fakeTransport(() => ({ status: 409, headers: {}, body: fixture('error-feedback-final.json') }));
     const error = await createHostClientV3(final.transport, connection).feedbackEnd('a_0').catch((e) => e);
     expect(error).toMatchObject({ kind: 'http', status: 409, code: 'feedback_final' });

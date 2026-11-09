@@ -13,6 +13,7 @@ function make(landing?: { thread: string; ask: string }) {
     answer: vi.fn(async () => {}),
     end: vi.fn(async () => {}),
   };
+  const pick = vi.fn(async (_thread: string, _kind: 'files' | 'skills', _query: string) => [{ kind: 'skill' as const, name: 'think' }]);
   const manage = {
     deleteThreads: vi.fn(async (ids: string[]) => ids.length),
     cleanup: vi.fn(async () => 3),
@@ -22,14 +23,15 @@ function make(landing?: { thread: string; ask: string }) {
     ops,
     manage,
     controller: createFeedbackController(ops, () => 'dark', landing),
-    managed: createFeedbackController({ ...ops, manage }, () => 'dark', landing),
+    managed: createFeedbackController({ ...ops, manage, pick }, () => 'dark', landing),
+    pick,
   };
 }
 
 describe('feedback controller', () => {
   it('answers Snapshot with the Host snapshot plus theme and no Git hand-off', async () => {
     const { ops, controller } = make();
-    expect(await controller.call('feedback.Snapshot', ['t_1'])).toEqual({ ...snapshot, theme: 'dark', canOpenGit: false, canManage: false });
+    expect(await controller.call('feedback.Snapshot', ['t_1'])).toEqual({ ...snapshot, theme: 'dark', canOpenGit: false, canManage: false, canPick: false });
     expect(ops.snapshot).toHaveBeenCalledWith('t_1', '');
     await controller.call('feedback.Snapshot', ['', '  db  ']);
     expect(ops.snapshot).toHaveBeenLastCalledWith('', 'db');
@@ -70,6 +72,20 @@ describe('feedback controller', () => {
     await expect(managed.call('feedback.DeleteThreads', [[]])).rejects.toThrow('Bad request.');
     await expect(managed.call('feedback.Cleanup', [0, false])).rejects.toThrow('Bad request.');
     await expect(managed.call('feedback.SetRetention', ['x'])).rejects.toThrow('Bad request.');
+  });
+
+  it('carries the picked files and Skills with an answer, and serves the picker only when the Host does', async () => {
+    const { ops, controller, managed, pick } = make();
+    await managed.call('feedback.Answer', ['a_1', { q1: { selected: ['x'] } }, [], [{ kind: 'file', name: 'docs/api.md', path: '/Users/me/x' }, { kind: 'skill', name: 'think' }]]);
+    expect(ops.answer).toHaveBeenLastCalledWith('a_1', { answers: { q1: { selected: ['x'] } }, context: [{ kind: 'file', name: 'docs/api.md' }, { kind: 'skill', name: 'think' }] });
+    expect(await managed.call('feedback.PickContext', ['t_1', 'skills', 'th'])).toEqual([{ kind: 'skill', name: 'think' }]);
+    expect(pick).toHaveBeenCalledWith('t_1', 'skills', 'th');
+    expect(((await managed.call('feedback.Snapshot', [''])) as { canPick: boolean }).canPick).toBe(true);
+    await expect(controller.call('feedback.PickContext', ['t_1', 'files', ''])).rejects.toThrow('does not offer');
+    await expect(managed.call('feedback.PickContext', ['t_1', 'secrets', ''])).rejects.toThrow('Bad request.');
+    await expect(controller.call('feedback.Answer', ['a_1', {}, [], [{ kind: 'url', name: 'https://x' }]])).rejects.toThrow('Bad request.');
+    await controller.call('feedback.Answer', ['a_1', { q1: { selected: ['x'] } }, [], [{ kind: 'file', name: 'docs/api.md', path: '/Users/me/x' }]]);
+    expect(ops.answer).toHaveBeenLastCalledWith('a_1', { answers: { q1: { selected: ['x'] } }, context: [{ kind: 'file', name: 'docs/api.md' }] });
   });
 
   it('refuses a malformed call before the Host, and what a phone cannot do', async () => {

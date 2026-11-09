@@ -47,6 +47,7 @@ import {
   quotaSchema,
   automationsSchema,
   feedbackAnswerRequestSchema,
+  feedbackPickSchema,
   feedbackCleanupRequestSchema,
   feedbackCleanupResultSchema,
   feedbackDeleteRequestSchema,
@@ -54,6 +55,7 @@ import {
   feedbackRetentionRequestSchema,
   feedbackSnapshotSchema,
   type FeedbackAnswerRequest,
+  type FeedbackPick,
   type FeedbackSnapshot,
   automationDetailSchema,
   automationWriteSchema,
@@ -532,6 +534,8 @@ export interface HostClientV3 {
   feedback(thread?: string, query?: string): Promise<FeedbackSnapshot>;
   /** Answer one Ask (an expired one too — a late answer). 409 `feedback_final` once the Ask was ended or answered; 503 `feedback_offline`. */
   feedbackAnswer(askId: string, request: FeedbackAnswerRequest): Promise<void>;
+  /** The answer form's file / Skill picker rows for a thread (needs `capabilities.feedbackContext`). */
+  feedbackPick(thread: string, kind: 'files' | 'skills', query: string): Promise<FeedbackPick['items']>;
   /** Close an Ask without an answer. */
   feedbackEnd(askId: string): Promise<void>;
   /** Inbox management (needs `capabilities.feedbackManage`): delete finished threads (resolves with how many went; a waiting one is kept). */
@@ -949,6 +953,8 @@ export function createHostClientV3(transport: PinnedTransport | null, connection
       return get(`/feedback${params ? `?${params}` : ''}`, feedbackSnapshotSchema, 'feedback');
     },
     feedbackAnswer: (askId, request) => post(`/feedback/asks/${q(askId)}/answer`, JSON.stringify(feedbackAnswerRequestSchema.parse(request)), 'feedback'),
+    feedbackPick: async (thread, kind, query) =>
+      (await get(`/feedback/context?thread=${q(thread)}&kind=${kind}&q=${q(query)}`, feedbackPickSchema, 'feedback')).items,
     feedbackEnd: (askId) => post(`/feedback/asks/${q(askId)}/end`, null, 'feedback'),
     feedbackDelete: async (ids) =>
       (await slowPostJson('/feedback/threads/delete', JSON.stringify(feedbackDeleteRequestSchema.parse({ ids })), feedbackDeleteResultSchema, 'feedback')).deleted,

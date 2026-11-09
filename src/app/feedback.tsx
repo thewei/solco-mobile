@@ -35,6 +35,7 @@ export default function FeedbackScreen() {
   const [readyFor, setReadyFor] = useState<string | null>(null);
   const served = bootstrap.data?.capabilities.feedback === true;
   const manageable = bootstrap.data?.capabilities.feedbackManage === true;
+  const pickable = bootstrap.data?.capabilities.feedbackContext === true;
   // A landing is a link's thread + ask. Only a new link changes the params (moving inside the page never does), so a
   // link tapped while this screen is already open (a warm start from a Feishu message) re-seats it, nothing else does.
   const landingKey = params.thread ? `${params.thread}:${params.ask ?? ''}` : '';
@@ -54,6 +55,7 @@ export default function FeedbackScreen() {
           await client.feedbackEnd(askId);
           void queryClient.invalidateQueries({ queryKey: ['v3', 'feedback'] });
         },
+        pick: pickable ? (thread, kind, query) => client.feedbackPick(thread, kind, query) : undefined,
         manage: manageable
           ? {
               deleteThreads: async (ids) => {
@@ -73,7 +75,7 @@ export default function FeedbackScreen() {
       activeScheme,
       landing,
     );
-  }, [client, queryClient, landing, manageable]);
+  }, [client, queryClient, landing, manageable, pickable]);
 
   let body: React.ReactNode;
   if (bootstrap.data && !served) {

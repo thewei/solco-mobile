@@ -35,6 +35,7 @@ import {
   automationsSchema,
   feedbackAnswerRequestSchema,
   feedbackCleanupRequestSchema,
+  feedbackPickSchema,
   feedbackCleanupResultSchema,
   feedbackDeleteRequestSchema,
   feedbackDeleteResultSchema,
@@ -466,6 +467,10 @@ describe('v3 golden files', () => {
     expect(request.answers.q1).toEqual({ selected: ['SQLite'], custom: 'with WAL' });
     expect(exact(chatAckSchema, await load('feedback-ack.json'))).toEqual({ ok: true });
     expect(thread.detail?.task).toContain('managed database');
+    expect(thread.detail?.asks?.[0]?.context).toEqual([{ kind: 'file', name: 'docs/api.md' }, { kind: 'skill', name: 'think' }]);
+    expect(exact(feedbackAnswerRequestSchema, await load('feedback-answer-request.json')).context).toHaveLength(2);
+    expect(exact(feedbackPickSchema, await load('feedback-context.json')).items[0]).toEqual({ kind: 'skill', name: 'think', detail: 'Plan before coding' });
+    expect(exact(bootstrapV3Schema, await load('bootstrap-feedback.json')).capabilities.feedbackContext).toBe(true);
     expect(exact(feedbackDeleteRequestSchema, await load('feedback-delete-request.json')).ids).toEqual(['t_1', 't_2']);
     expect(exact(feedbackDeleteResultSchema, await load('feedback-delete-ack.json'))).toEqual({ ok: true, deleted: 2 });
     expect(exact(feedbackCleanupRequestSchema, await load('feedback-cleanup-request.json'))).toEqual({ olderThanDays: 30, dryRun: true });
