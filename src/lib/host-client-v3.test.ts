@@ -216,6 +216,30 @@ describe('chat', () => {
     expect(error).toMatchObject({ kind: 'http', status: 404, code: 'no_queued' });
   });
 
+  it('reads the Vault view and items, answers an approval and reads one value with the Host\'s paths and bodies', async () => {
+    const view = fakeTransport(() => ok(fixture('vault.json')));
+    const client = createHostClientV3(view.transport, connection);
+    expect((await client.vault()).approvals[0]?.id).toBe(7);
+    expect(view.requests[0]).toMatchObject({ url: 'https://192.168.1.20:7788/api/v3/vault' });
+    const items = fakeTransport(() => ok(fixture('vault-items.json')));
+    expect((await createHostClientV3(items.transport, connection).vaultItems()).map((i) => i.path)).toEqual(['agent/prod/pg', 'agent/prod/app-env']);
+    expect(items.requests[0]?.url).toBe('https://192.168.1.20:7788/api/v3/vault/items');
+    const ack = fakeTransport(() => ok(fixture('vault-ack.json')));
+    const writer = createHostClientV3(ack.transport, connection);
+    await writer.vaultAnswer(7, true);
+    expect(ack.requests[0]).toMatchObject({ method: 'POST', url: 'https://192.168.1.20:7788/api/v3/vault/approvals/7/answer', body: '{"allow":true}' });
+    await writer.vaultAnswer(7, false);
+    expect(ack.requests[1]?.body).toBe('{"allow":false}');
+    const reveal = fakeTransport(() => ok(fixture('vault-reveal.json')));
+    expect(await createHostClientV3(reveal.transport, connection).vaultReveal('vault://agent/prod/pg#password')).toBe('demo-value-123');
+    expect(reveal.requests[0]).toMatchObject({ method: 'POST', url: 'https://192.168.1.20:7788/api/v3/vault/reveal', body: '{"ref":"vault://agent/prod/pg#password"}' });
+    await expect(createHostClientV3(reveal.transport, connection).vaultReveal('vault://agent/prod/pg')).rejects.toBeDefined();
+    const off = fakeTransport(() => ({ status: 403, headers: {}, body: fixture('error-vault-reveal-off.json') }));
+    expect(await createHostClientV3(off.transport, connection).vaultReveal('vault://a/b#c').catch((e) => e)).toMatchObject({ kind: 'http', status: 403, code: 'vault_reveal_off' });
+    const gone = fakeTransport(() => ({ status: 410, headers: {}, body: fixture('error-vault-gone.json') }));
+    expect(await createHostClientV3(gone.transport, connection).vaultAnswer(7, true).catch((e) => e)).toMatchObject({ status: 410, code: 'vault_gone' });
+  });
+
   it('reads the Feedback inbox, answers and ends an Ask with the Host\'s paths and bodies, and relays a final one', async () => {
     const list = fakeTransport(() => ok(fixture('feedback-thread.json')));
     const client = createHostClientV3(list.transport, connection);

@@ -49,7 +49,7 @@ export const bootstrapV3Schema = z.object({
   hostId: z.string(),
   hostName: z.string(),
   version: z.string(),
-  capabilities: z.object({ terminal: z.boolean(), chat: z.boolean(), launch: z.boolean().optional(), git: z.boolean().optional(), gitWrite: z.boolean().optional(), files: z.boolean().optional(), filesSearch: z.boolean().optional(), terminalControl: z.boolean().optional(), terminalHistory: z.boolean().optional(), quota: z.boolean().optional(), feedback: z.boolean().optional(), feedbackManage: z.boolean().optional(), feedbackContext: z.boolean().optional(), automations: z.boolean().optional(), automationsManage: z.boolean().optional(), personalAgent: z.boolean().optional(), personalAgentManage: z.boolean().optional(), personalAgentApprove: z.boolean().optional(), personalAgentGroups: z.boolean().optional(), personalAgentGroupArchive: z.boolean().optional(), personalAgentPersona: z.boolean().optional(), personalAgentPlans: z.boolean().optional(), personalAgentRoutines: z.boolean().optional(), personalAgentAutonomy: z.boolean().optional(), personalAgentMemory: z.boolean().optional(), personalAgentProactivity: z.boolean().optional(), personalAgentActivityNotices: z.boolean().optional(), personalAgentCoordinatorChat: z.boolean().optional(), assistantSystemPush: z.boolean().optional(), personalAgentNarrativeReports: z.boolean().optional(), sessions: z.boolean().optional(), sessionContinue: z.boolean().optional(), sessionTrash: z.boolean().optional(), voice: z.boolean().optional(), attachments: z.boolean().optional(), queue: z.boolean().optional(), queueEdit: z.boolean().optional(), devices: z.boolean().optional(), remoteDesktop: z.boolean().optional(), p2p: z.boolean().optional() }),
+  capabilities: z.object({ terminal: z.boolean(), chat: z.boolean(), launch: z.boolean().optional(), git: z.boolean().optional(), gitWrite: z.boolean().optional(), files: z.boolean().optional(), filesSearch: z.boolean().optional(), terminalControl: z.boolean().optional(), terminalHistory: z.boolean().optional(), quota: z.boolean().optional(), feedback: z.boolean().optional(), feedbackManage: z.boolean().optional(), feedbackContext: z.boolean().optional(), vault: z.boolean().optional(), automations: z.boolean().optional(), automationsManage: z.boolean().optional(), personalAgent: z.boolean().optional(), personalAgentManage: z.boolean().optional(), personalAgentApprove: z.boolean().optional(), personalAgentGroups: z.boolean().optional(), personalAgentGroupArchive: z.boolean().optional(), personalAgentPersona: z.boolean().optional(), personalAgentPlans: z.boolean().optional(), personalAgentRoutines: z.boolean().optional(), personalAgentAutonomy: z.boolean().optional(), personalAgentMemory: z.boolean().optional(), personalAgentProactivity: z.boolean().optional(), personalAgentActivityNotices: z.boolean().optional(), personalAgentCoordinatorChat: z.boolean().optional(), assistantSystemPush: z.boolean().optional(), personalAgentNarrativeReports: z.boolean().optional(), sessions: z.boolean().optional(), sessionContinue: z.boolean().optional(), sessionTrash: z.boolean().optional(), voice: z.boolean().optional(), attachments: z.boolean().optional(), queue: z.boolean().optional(), queueEdit: z.boolean().optional(), devices: z.boolean().optional(), remoteDesktop: z.boolean().optional(), p2p: z.boolean().optional() }),
   /** Herdr sessions of the Mac, plus (`capabilities.devices`) the Mac's saved machines as `kind: 'device'` entries with a status. */
   instances: z.array(z.object({ id: z.string().min(1), kind: z.literal('device').optional(), label: z.string().optional(), status: z.string().optional() })),
   /** What POST /launch accepts, `terminal` first; present only when `capabilities.launch`. */
@@ -175,6 +175,19 @@ export const eventMessageSchema = z.discriminatedUnion('t', [
     waiting: z.number().int().nonnegative(),
     project: z.string().optional(),
     client: z.string().optional(),
+    preview: z.string().optional(),
+  }),
+  /**
+   * A secret approval reached (kind `approval`) or left (`resolved`) the Solco Vault app on the Mac: the waiting count
+   * and, for a new one, the project and the reference names (never a value or a Mac path). The phone re-reads GET /vault.
+   */
+  z.object({
+    t: z.literal('vault'),
+    kind: z.enum(['approval', 'resolved']),
+    waiting: z.number().int().nonnegative(),
+    id: z.number().int().positive().optional(),
+    reveal: z.boolean().optional(),
+    project: z.string().optional(),
     preview: z.string().optional(),
   }),
   /** The Mac's Assistants overview moved: counts only — the phone re-reads the authoritative overview. */
@@ -753,6 +766,48 @@ export const feedbackThreadSchema = z.object({
   asks: z.array(feedbackAskSchema).optional(),
 });
 export type FeedbackThread = z.infer<typeof feedbackThreadSchema>;
+
+// ---- Solco Vault (present only when `capabilities.vault`) ----
+// The Solco Vault app on the Mac owns every state and both switches; the Host forwards. Names only, except the one
+// reveal response.
+
+/** One reference of a waiting approval and its standing policy. */
+export const vaultRefSchema = z.object({ ref: z.string(), standing: z.enum(['new', 'ask', 'allowed']) });
+
+/** A secret request waiting for the owner. `reveal`: a `get` — the Agent will see the plain value. */
+export const vaultApprovalSchema = z.object({
+  id: z.number().int().positive(),
+  project: z.string(),
+  command: z.string().optional(),
+  reveal: z.boolean().optional(),
+  refs: z.array(vaultRefSchema),
+  asked: z.string(),
+});
+export type VaultApproval = z.infer<typeof vaultApprovalSchema>;
+
+/**
+ * GET /vault: `online:false` = the Solco Vault app is not running; `access:false` = it is, but its owner has not
+ * switched phone access on (both are states the page draws, not errors). `canReveal` = values may be shown here.
+ */
+export const vaultViewSchema = z.object({
+  online: z.boolean(),
+  access: z.boolean(),
+  state: z.enum(['unauthenticated', 'locked', 'unlocked']).optional(),
+  canReveal: z.boolean().optional(),
+  approvals: z.array(vaultApprovalSchema),
+});
+export type VaultView = z.infer<typeof vaultViewSchema>;
+
+/** GET /vault/items: item and field names, never a value; secure notes do not appear. */
+export const vaultItemSchema = z.object({ path: z.string(), kind: z.string(), fields: z.array(z.string()).optional() });
+export type VaultItem = z.infer<typeof vaultItemSchema>;
+export const vaultItemsSchema = z.object({ items: z.array(vaultItemSchema) });
+
+/** POST /vault/approvals/{id}/answer: allow once or deny (there is no "always" from the phone). */
+export const vaultAnswerRequestSchema = z.object({ allow: z.boolean() });
+/** POST /vault/reveal: one value, in plain text, on request (needs `canReveal`). */
+export const vaultRevealRequestSchema = z.object({ ref: z.string().regex(/^vault:\/\/.+#.+$/) });
+export const vaultRevealSchema = z.object({ value: z.string() });
 
 /** GET /feedback[?thread=]: the list and, for `thread`, its timeline. `online:false` = the Mac's broker is not running (a state, not an error). */
 export const feedbackSnapshotSchema = z.object({

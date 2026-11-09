@@ -9,12 +9,12 @@ import { Platform, ScrollView } from 'react-native';
 
 import { ListRow, Section, SwitchRow } from '@/components/list-group';
 import { Screen } from '@/components/screen';
-import { useHostAutomations, useHostFeedback, useHostInstance, usePersonalAgentOverview, useTreeV3 } from '@/features/host/queries-v3';
+import { useHostAutomations, useHostFeedback, useHostInstance, useHostVault, usePersonalAgentOverview, useTreeV3 } from '@/features/host/queries-v3';
 import { APPEARANCE_LABEL } from '@/lib/appearance';
 import { useHostV3 } from '@/lib/host-v3-provider';
 import { useAppearanceStore } from '@/state/appearance-store';
 import { useChatPrefsStore } from '@/state/chat-prefs-store';
-import { IconBell, IconBookmark, IconClock, IconDeviceDesktop, IconDeviceLaptop, IconFolders, IconInbox, IconPalette, IconSparkles } from '@/theme/glyphs';
+import { IconBell, IconBookmark, IconClock, IconDeviceDesktop, IconDeviceLaptop, IconFolders, IconInbox, IconKey, IconPalette, IconSparkles } from '@/theme/glyphs';
 
 
 const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
@@ -29,6 +29,7 @@ export default function SettingsScreen() {
   const overview = usePersonalAgentOverview(caps?.personalAgent === true);
   const automations = useHostAutomations(caps?.automations === true);
   const feedback = useHostFeedback(caps?.feedback === true);
+  const vault = useHostVault(caps?.vault === true);
   const tree = useTreeV3(instance);
   const assistants = overview.data?.assistants.length;
   const groups = overview.data?.groups.length ?? 0;
@@ -44,7 +45,7 @@ export default function SettingsScreen() {
           {caps?.remoteDesktop ? <ListRow icon={IconDeviceLaptop} label="Remote Desktop" onPress={() => router.push('/desktop')} /> : null}
           {Platform.OS === 'android' ? <ListRow icon={IconBell} label="Notifications" onPress={() => router.push('/notifications')} /> : null}
         </Section>
-        {caps?.personalAgent || caps?.automations || caps?.feedback ? (
+        {caps?.personalAgent || caps?.automations || caps?.feedback || caps?.vault ? (
           <Section title="Agents">
             {caps.personalAgent ? (
               <ListRow
@@ -55,6 +56,7 @@ export default function SettingsScreen() {
               />
             ) : null}
             {caps.feedback ? <ListRow icon={IconInbox} label="Feedback" detail={feedback.data && feedback.data.waiting > 0 ? `${feedback.data.waiting} waiting` : undefined} onPress={() => router.push('/feedback')} /> : null}
+            {caps.vault ? <ListRow icon={IconKey} label="Vault" detail={vault.data && vault.data.approvals.length > 0 ? `${vault.data.approvals.length} waiting` : undefined} onPress={() => router.push('/vault')} /> : null}
             {caps.automations ? <ListRow icon={IconClock} label="Automations" detail={automations.data ? String(automations.data.automations.length) : undefined} onPress={() => router.push('/automations')} /> : null}
           </Section>
         ) : null}

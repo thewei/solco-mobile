@@ -170,7 +170,7 @@ export function useTerminalHistory(instance: string | null, terminalId: string) 
  * Keeps one events socket open for the instance and refetches the tree on every change signal.
  * Reconnects with a capped exponential backoff; returns whether the stream is currently live.
  */
-export function useTreeEvents(instance: string | null, onAutomation?: (frame: AutomationFrame) => void, onAssistantActivity?: () => void, onFeedback?: (frame: Extract<EventMessage, { t: 'feedback' }>) => void): boolean {
+export function useTreeEvents(instance: string | null, onAutomation?: (frame: AutomationFrame) => void, onAssistantActivity?: () => void, onFeedback?: (frame: Extract<EventMessage, { t: 'feedback' }>) => void, onVault?: (frame: Extract<EventMessage, { t: 'vault' }>) => void): boolean {
   const { client, signal } = useHostV3();
   const queryClient = useQueryClient();
   const [live, setLive] = useState(false);
@@ -181,6 +181,8 @@ export function useTreeEvents(instance: string | null, onAutomation?: (frame: Au
   onAssistantActivityRef.current = onAssistantActivity;
   const onFeedbackRef = useRef(onFeedback);
   onFeedbackRef.current = onFeedback;
+  const onVaultRef = useRef(onVault);
+  onVaultRef.current = onVault;
 
   useEffect(() => {
     if (!client || !instance) return undefined;
@@ -218,6 +220,11 @@ export function useTreeEvents(instance: string | null, onAutomation?: (frame: Au
           if (message.t === 'feedback') {
             onFeedbackRef.current?.(message); // an Agent's question reached (or left) the Mac's inbox: a notification, not a tree change
             void queryClient.invalidateQueries({ queryKey: ['v3', 'feedback'] }); // an open Feedback screen, the Settings badge and the Chats banner follow it
+            return;
+          }
+          if (message.t === 'vault') {
+            onVaultRef.current?.(message); // a secret approval reached (or left) the Mac's Vault: a notification, not a tree change
+            void queryClient.invalidateQueries({ queryKey: ['v3', 'vault'] }); // an open Vault screen follows it
             return;
           }
           if (message.t === 'personal-agent.changed') {
@@ -425,6 +432,53 @@ export function useHostFeedback(enabled: boolean) {
   });
   useForgetOnUnauthorized(query.error);
   return query;
+}
+
+/**
+ * The Solco Vault view (needs `capabilities.vault`): the waiting approvals and the page's state. Read on open, on pull,
+ * on every `vault` frame and — while the Vault screen is open (`poll`) — every 4 s, because the frame only arrives while
+ * the events socket is up.
+ */
+export function useHostVault(enabled: boolean, poll = false) {
+  const { client } = useHostV3();
+  const query = useQuery({
+    queryKey: ['v3', 'vault'],
+    queryFn: () => client!.vault(),
+    enabled: client !== null && enabled,
+    staleTime: 2_000,
+    gcTime: 30_000,
+    refetchInterval: poll ? 4_000 : false,
+    retry: false,
+  });
+  useForgetOnUnauthorized(query.error);
+  return query;
+}
+
+/** Item and field names (never values); only while the Vault is ready for the phone (`enabled`). */
+export function useVaultItems(enabled: boolean) {
+  const { client } = useHostV3();
+  const query = useQuery({
+    queryKey: ['v3', 'vault', 'items'],
+    queryFn: () => client!.vaultItems(),
+    enabled: client !== null && enabled,
+    staleTime: 15_000,
+    gcTime: 30_000,
+    retry: false,
+  });
+  useForgetOnUnauthorized(query.error);
+  return query;
+}
+
+/** Allow once or deny one waiting approval; the view is re-read whatever the answer was (the Mac's truth). */
+export function useVaultAnswer() {
+  const { client } = useHostV3();
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, { id: number; allow: boolean }>({
+    mutationFn: ({ id, allow }) => (client ? client.vaultAnswer(id, allow) : Promise.reject(new Error('Not connected'))),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ['v3', 'vault'] });
+    },
+  });
 }
 
 /** One automation in full (needs `capabilities.automationsManage`); refetched on open, on pull and with every `automation` frame. */

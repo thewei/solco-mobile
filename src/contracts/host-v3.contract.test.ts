@@ -42,6 +42,11 @@ import {
   feedbackDeleteResultSchema,
   feedbackRetentionRequestSchema,
   feedbackSnapshotSchema,
+  vaultAnswerRequestSchema,
+  vaultItemsSchema,
+  vaultRevealRequestSchema,
+  vaultRevealSchema,
+  vaultViewSchema,
   automationDetailSchema,
   automationWriteSchema,
   AUTOMATION_REFUSALS,
@@ -485,6 +490,25 @@ describe('v3 golden files', () => {
     expect(exact(errorBodyV3Schema, await load('error-feedback-final.json')).error.code).toBe('feedback_final');
     expect(exact(errorBodyV3Schema, await load('error-feedback-unavailable.json')).error.code).toBe('feedback_unavailable');
     expect(exact(eventMessageSchema, await load('events-feedback.json'))).toEqual({ t: 'feedback', kind: 'ask', threadId: 't_1', askId: 'a_1', waiting: 1, project: 'solco', client: 'Claude Code', preview: 'Which database should the service use?' });
+  });
+
+  it('vault: capability, the view in its three states, items, answer, reveal, errors and the frame', async () => {
+    expect(exact(bootstrapV3Schema, await load('bootstrap-vault.json')).capabilities.vault).toBe(true);
+    const view = exact(vaultViewSchema, await load('vault.json'));
+    expect(view).toMatchObject({ online: true, access: true, state: 'unlocked', canReveal: true });
+    expect(view.approvals[0]).toMatchObject({ id: 7, project: 'api', command: 'make deploy' });
+    expect(view.approvals[0]?.refs.map((r) => r.standing)).toEqual(['new', 'new']);
+    expect(exact(vaultViewSchema, await load('vault-phone-off.json'))).toEqual({ online: true, access: false, approvals: [] });
+    expect(exact(vaultViewSchema, await load('vault-offline.json'))).toEqual({ online: false, access: false, approvals: [] });
+    expect(exact(vaultItemsSchema, await load('vault-items.json')).items[0]).toEqual({ path: 'agent/prod/pg', kind: 'login', fields: ['username', 'password'] });
+    expect(exact(vaultAnswerRequestSchema, await load('vault-answer-request.json'))).toEqual({ allow: true });
+    expect(exact(chatAckSchema, await load('vault-ack.json'))).toEqual({ ok: true });
+    expect(exact(vaultRevealRequestSchema, await load('vault-reveal-request.json')).ref).toBe('vault://agent/prod/pg#password');
+    expect(exact(vaultRevealSchema, await load('vault-reveal.json'))).toEqual({ value: 'demo-value-123' });
+    expect(exact(errorBodyV3Schema, await load('error-vault-reveal-off.json')).error.code).toBe('vault_reveal_off');
+    expect(exact(errorBodyV3Schema, await load('error-vault-gone.json')).error.code).toBe('vault_gone');
+    expect(exact(errorBodyV3Schema, await load('error-vault-unavailable.json')).error.code).toBe('vault_unavailable');
+    expect(exact(eventMessageSchema, await load('events-vault.json'))).toEqual({ t: 'vault', kind: 'approval', id: 7, waiting: 1, project: 'api', preview: 'agent/prod/pg#password, agent/prod/pg#username' });
   });
 
   it('automations: bootstrap capability, list and the closed-gate error', async () => {

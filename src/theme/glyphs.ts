@@ -51,10 +51,12 @@ export { default as IconGitCommit } from '@tabler/icons-react-native/IconGitComm
 export { default as IconHandStop } from '@tabler/icons-react-native/IconHandStop';
 export { default as IconHistory } from '@tabler/icons-react-native/IconHistory';
 export { default as IconInbox } from '@tabler/icons-react-native/IconInbox';
+export { default as IconKey } from '@tabler/icons-react-native/IconKey';
 export { default as IconKeyboard } from '@tabler/icons-react-native/IconKeyboard';
 export { default as IconLayoutGrid } from '@tabler/icons-react-native/IconLayoutGrid';
 export { default as IconLink } from '@tabler/icons-react-native/IconLink';
 export { default as IconLoader2 } from '@tabler/icons-react-native/IconLoader2';
+export { default as IconLock } from '@tabler/icons-react-native/IconLock';
 export { default as IconMessage } from '@tabler/icons-react-native/IconMessage';
 export { default as IconMessageCircle } from '@tabler/icons-react-native/IconMessageCircle';
 export { default as IconMessageFilled } from '@tabler/icons-react-native/IconMessageFilled';

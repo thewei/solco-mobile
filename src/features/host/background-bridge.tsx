@@ -38,6 +38,7 @@ import {
 import { createAttentionDelivery } from '@/features/host/attention-delivery';
 import { automationNotice, type AutomationFrame } from '@/features/host/automation-notice';
 import { feedbackNotice, type FeedbackFrame } from '@/features/host/feedback-notice';
+import { vaultNotice, VAULT_NOTIFICATION_PREFIX, type VaultFrame } from '@/features/host/vault-model';
 import { createAssistantActivityNoticePump } from '@/features/host/assistant-activity-notice';
 import {
   ASSISTANT_APPROVAL_CATEGORY,
@@ -100,7 +101,24 @@ export function BackgroundBridge({ children }: PropsWithChildren) {
     const { identifier, title, body, data } = action.request;
     void Notifications.scheduleNotificationAsync({ identifier, content: { title, body, data }, trigger: { channelId: ATTENTION_CHANNEL } }).catch(() => undefined);
   }, []);
-  const live = useTreeEvents(instance, onAutomation, onAssistantActivity, onFeedback);
+  // A secret approval is the same kind of call: one names-only frame, a local notification (never while the Vault screen is
+  // already open), cleared when the approval is answered anywhere. The frame does not say which one left, so clear the
+  // ones this phone raised (the shade holds a handful at most).
+  const onVault = useCallback((frame: VaultFrame) => {
+    if (Platform.OS === 'web') return;
+    const action = vaultNotice(frame);
+    if (action.kind === 'none') return;
+    if (action.kind === 'dismiss') {
+      void Notifications.getPresentedNotificationsAsync()
+        .then((shown) => Promise.all(shown.filter((n) => n.request.identifier.startsWith(VAULT_NOTIFICATION_PREFIX)).map((n) => Notifications.dismissNotificationAsync(n.request.identifier))))
+        .catch(() => undefined);
+      return;
+    }
+    if (AppState.currentState === 'active' && pathnameRef.current === '/vault') return;
+    const { identifier, title, body, data } = action.request;
+    void Notifications.scheduleNotificationAsync({ identifier, content: { title, body, data }, trigger: { channelId: ATTENTION_CHANNEL } }).catch(() => undefined);
+  }, []);
+  const live = useTreeEvents(instance, onAutomation, onAssistantActivity, onFeedback, onVault);
   const clientRef = useRef(client);
   clientRef.current = client;
 

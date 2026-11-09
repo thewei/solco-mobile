@@ -55,6 +55,13 @@ import {
   feedbackDeleteResultSchema,
   feedbackRetentionRequestSchema,
   feedbackSnapshotSchema,
+  vaultAnswerRequestSchema,
+  vaultItemsSchema,
+  vaultRevealRequestSchema,
+  vaultRevealSchema,
+  vaultViewSchema,
+  type VaultItem,
+  type VaultView,
   type FeedbackAnswerRequest,
   type FeedbackPick,
   type FeedbackThumbnails,
@@ -530,6 +537,18 @@ export interface HostClientV3 {
   /** The Mac's Automations list, read-only (needs `capabilities.automations`; 404 `automations_unavailable` while its plugin is off). */
   automations(): Promise<Automations>;
   /**
+   * The Solco Vault app on the Mac (needs `capabilities.vault`): the secret approvals waiting for you and the two
+   * states the page draws — `online:false` (the app is not running) and `access:false` (its owner has not switched
+   * phone access on).
+   */
+  vault(): Promise<VaultView>;
+  /** Item and field names of the vault (409 `vault_phone_off` / `vault_locked`; 503 `vault_offline`). Never a value. */
+  vaultItems(): Promise<VaultItem[]>;
+  /** Allow once (`true`) or deny one waiting approval; 410 `vault_gone` once it was answered or timed out. There is no "always" here. */
+  vaultAnswer(id: number, allow: boolean): Promise<void>;
+  /** One value in plain text, on request (403 `vault_reveal_off` unless the Mac's owner allowed it; 422 `vault_note` for a secure note). */
+  vaultReveal(ref: string): Promise<string>;
+  /**
    * The Mac's Feedback inbox (needs `capabilities.feedback`): the Agent-question threads and, for `thread`, its
    * timeline. A broker that is not running is `online:false`, not an error.
    */
@@ -952,6 +971,11 @@ export function createHostClientV3(transport: PinnedTransport | null, connection
     remoteDesktopSession: (offer) => slowPostJson('/remote-desktop/session', JSON.stringify(rdOfferSchema.parse(offer)), rdAnswerSchema, 'remote desktop', REMOTE_DESKTOP_TIMEOUT_MS),
     quota: (force) => get(`/quota${force ? '?refresh=1' : ''}`, quotaSchema, 'quota', QUOTA_TIMEOUT_MS),
     automations: () => get('/automations', automationsSchema, 'automations'),
+    vault: () => get('/vault', vaultViewSchema, 'vault'),
+    vaultItems: async () => (await get('/vault/items', vaultItemsSchema, 'vault items')).items,
+    vaultAnswer: (id, allow) => post(`/vault/approvals/${q(String(id))}/answer`, JSON.stringify(vaultAnswerRequestSchema.parse({ allow })), 'vault'),
+    vaultReveal: async (ref) =>
+      (await slowPostJson('/vault/reveal', JSON.stringify(vaultRevealRequestSchema.parse({ ref })), vaultRevealSchema, 'vault')).value,
     feedback: (thread, query) => {
       const params = [thread ? `thread=${q(thread)}` : '', query ? `q=${q(query)}` : ''].filter(Boolean).join('&');
       return get(`/feedback${params ? `?${params}` : ''}`, feedbackSnapshotSchema, 'feedback');
