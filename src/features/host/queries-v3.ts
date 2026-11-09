@@ -911,6 +911,30 @@ function chatFrameKey(instance: string | null, paneId: string | null): string | 
   return instance && paneId ? `${instance}:${paneId}` : null;
 }
 
+function cachePut(key: string, frame: ChatFrame): void {
+  // Move to the MRU (most recently used) end of the map.
+  chatFrameCache.delete(key);
+  if (chatFrameCache.size >= CHAT_FRAME_CACHE_MAX) {
+    const oldest = chatFrameCache.keys().next().value;
+    if (oldest) chatFrameCache.delete(oldest);
+  }
+  chatFrameCache.set(key, frame);
+}
+
+function cacheGet(key: string): ChatFrame | undefined {
+  const frame = chatFrameCache.get(key);
+  if (frame) {
+    // Refresh access order on read.
+    chatFrameCache.delete(key);
+    chatFrameCache.set(key, frame);
+  }
+  return frame;
+}
+
+function cacheDelete(key: string): void {
+  chatFrameCache.delete(key);
+}
+
 export function clearChatFrameCache(): void {
   chatFrameCache.clear();
 }
@@ -924,7 +948,7 @@ export function useChatStream(instance: string | null, paneId: string | null, li
   const { client } = useHostV3();
   const initialKey = chatFrameKey(instance, paneId);
   const [phase, setPhase] = useState<ChatPhase>(() => (initialKey && chatFrameCache.has(initialKey) ? 'live' : 'connecting'));
-  const [frame, setFrame] = useState<ChatFrame | null>(() => (initialKey ? chatFrameCache.get(initialKey) ?? null : null));
+  const [frame, setFrame] = useState<ChatFrame | null>(() => (initialKey ? cacheGet(initialKey) ?? null : null));
   const attempt = useRef(0);
   const olderRef = useRef<() => void>(() => undefined);
   const older = useCallback(() => olderRef.current(), []);
@@ -932,7 +956,7 @@ export function useChatStream(instance: string | null, paneId: string | null, li
   // When switching conversation, immediately serve from cache if available instead of flashing 'connecting'.
   useEffect(() => {
     const k = chatFrameKey(instance, paneId);
-    const cached = k ? chatFrameCache.get(k) : null;
+    const cached = k ? cacheGet(k) : null;
     setPhase(cached ? 'live' : 'connecting');
     setFrame(cached ?? null);
   }, [instance, paneId]);
@@ -1002,23 +1026,17 @@ export function useChatStream(instance: string | null, paneId: string | null, li
           setPhase('live');
           setFrame(next);
           const k = chatFrameKey(instance, paneId);
-          if (k) {
-            if (chatFrameCache.size >= CHAT_FRAME_CACHE_MAX && !chatFrameCache.has(k)) {
-              const oldest = chatFrameCache.keys().next().value;
-              if (oldest) chatFrameCache.delete(oldest);
-            }
-            chatFrameCache.set(k, next);
-          }
+          if (k) cachePut(k, next);
         },
         onClose(event) {
           if (stopped || ticket !== generation) return;
           const k = chatFrameKey(instance, paneId);
           if (event.noConversation) {
-            if (k) chatFrameCache.delete(k);
+            if (k) cacheDelete(k);
             return waitForConversation();
           }
           if (event.gone) {
-            if (k) chatFrameCache.delete(k);
+            if (k) cacheDelete(k);
             setFrame(null);
             setPhase('gone');
             return;
