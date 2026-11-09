@@ -36,6 +36,7 @@ import {
   feedbackAnswerRequestSchema,
   feedbackCleanupRequestSchema,
   feedbackPickSchema,
+  feedbackThumbnailsSchema,
   feedbackCleanupResultSchema,
   feedbackDeleteRequestSchema,
   feedbackDeleteResultSchema,
@@ -470,6 +471,10 @@ describe('v3 golden files', () => {
     expect(thread.detail?.asks?.[0]?.context).toEqual([{ kind: 'file', name: 'docs/api.md' }, { kind: 'skill', name: 'think' }]);
     expect(exact(feedbackAnswerRequestSchema, await load('feedback-answer-request.json')).context).toHaveLength(2);
     expect(exact(feedbackPickSchema, await load('feedback-context.json')).items[0]).toEqual({ kind: 'skill', name: 'think', detail: 'Plan before coding' });
+    expect(exact(feedbackThumbnailsSchema, await load('feedback-thumbnails.json')).thumbnails).toEqual([
+      { mimeType: 'image/jpeg', dataBase64: 'AQID', name: 'shot.png' },
+      { mimeType: '', dataBase64: '', name: 'huge.tiff' },
+    ]);
     expect(exact(bootstrapV3Schema, await load('bootstrap-feedback.json')).capabilities.feedbackContext).toBe(true);
     expect(exact(feedbackDeleteRequestSchema, await load('feedback-delete-request.json')).ids).toEqual(['t_1', 't_2']);
     expect(exact(feedbackDeleteResultSchema, await load('feedback-delete-ack.json'))).toEqual({ ok: true, deleted: 2 });

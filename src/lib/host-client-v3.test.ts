@@ -234,6 +234,9 @@ describe('chat', () => {
     const pick = fakeTransport(() => ok(fixture('feedback-context.json')));
     expect(await createHostClientV3(pick.transport, connection).feedbackPick('t 1', 'skills', 'a b')).toEqual([{ kind: 'skill', name: 'think', detail: 'Plan before coding' }]);
     expect(pick.requests[0]?.url).toBe('https://192.168.1.20:7788/api/v3/feedback/context?thread=t%201&kind=skills&q=a%20b');
+    const thumbs = fakeTransport(() => ok(fixture('feedback-thumbnails.json')));
+    expect((await createHostClientV3(thumbs.transport, connection).feedbackThumbnails('a 1'))[0]).toEqual({ mimeType: 'image/jpeg', dataBase64: 'AQID', name: 'shot.png' });
+    expect(thumbs.requests[0]?.url).toBe('https://192.168.1.20:7788/api/v3/feedback/asks/a%201/thumbnails');
     await writer.feedbackAnswer('a_3', { answers: { q1: { selected: ['x'] } }, context: [{ kind: 'file', name: 'docs/api.md' }] });
     expect(write.requests[2]).toMatchObject({ body: '{"answers":{"q1":{"selected":["x"]}},"context":[{"kind":"file","name":"docs/api.md"}]}' });
     const del = fakeTransport(() => ok(fixture('feedback-delete-ack.json')));

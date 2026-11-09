@@ -780,6 +780,15 @@ export const feedbackPickSchema = z.object({
 });
 export type FeedbackPick = z.infer<typeof feedbackPickSchema>;
 
+/**
+ * GET /feedback/asks/{id}/thumbnails (served with `capabilities.feedbackManage`; an older Host answers 404): the images
+ * attached to an answered Ask as small JPEGs, in attach order. A slot the Mac could not shrink has empty `dataBase64`.
+ */
+export const feedbackThumbnailsSchema = z.object({
+  thumbnails: z.array(z.object({ mimeType: z.string(), dataBase64: z.string(), name: z.string().optional() })),
+});
+export type FeedbackThumbnails = z.infer<typeof feedbackThumbnailsSchema>;
+
 // Inbox management (needs `capabilities.feedbackManage`): a thread an Agent still waits on is never deleted.
 /** POST /feedback/threads/delete */
 export const feedbackDeleteRequestSchema = z.object({ ids: z.array(z.string()).min(1).max(500) });

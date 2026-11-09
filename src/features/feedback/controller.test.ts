@@ -29,6 +29,18 @@ function make(landing?: { thread: string; ask: string }) {
 }
 
 describe('feedback controller', () => {
+  it('answers Thumbnails from the Host, and with none (older Host, failed read) answers no tiles instead of an error', async () => {
+    const { ops, controller } = make();
+    const tiles = [{ mimeType: 'image/jpeg', dataBase64: 'AQID', name: 'a.png' }];
+    const thumbnails = vi.fn(async (_askId: string) => tiles);
+    const served = createFeedbackController({ ...ops, thumbnails }, () => 'dark');
+    expect(await served.call('feedback.Thumbnails', ['a_1'])).toEqual(tiles);
+    expect(thumbnails).toHaveBeenCalledWith('a_1');
+    thumbnails.mockRejectedValueOnce(new HostV3Error('http', 'not found', { status: 404, code: 'not_found' }));
+    expect(await served.call('feedback.Thumbnails', ['a_1'])).toEqual([]);
+    expect(await controller.call('feedback.Thumbnails', ['a_1'])).toEqual([]);
+  });
+
   it('answers Snapshot with the Host snapshot plus theme and no Git hand-off', async () => {
     const { ops, controller } = make();
     expect(await controller.call('feedback.Snapshot', ['t_1'])).toEqual({ ...snapshot, theme: 'dark', canOpenGit: false, canManage: false, canPick: false });

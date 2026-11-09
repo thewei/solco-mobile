@@ -1,7 +1,7 @@
 // [INPUT]: the paired Host client's Feedback operations (and, when the Host offers them, the inbox management ones), the app's colour scheme, and an optional landing (a
 //          notification tap or link naming a thread and an Ask).
 // [OUTPUT]: `createFeedbackController` — answers the shared Feedback page's `feedback.*` bridge calls
-//           (Snapshot/Answer[+context refs]/PickContext/End/DeleteThreads/Cleanup/SetRetention/OpenProject), and `feedbackFailureText` (a Host refusal in the sentence the page shows).
+//           (Snapshot/Answer[+context refs]/PickContext/Thumbnails/End/DeleteThreads/Cleanup/SetRetention/OpenProject), and `feedbackFailureText` (a Host refusal in the sentence the page shows).
 // [POS]: the phone's counterpart of the desktop `FeedbackBridge` Go service (solco internal/nativeui/feedback_bridge.go),
 //        minus "Open project" (a Mac action). The Host's `GET /feedback` already is the page's snapshot; this only adds the
 //        page's theme, the one-shot landing and the phone's `canOpenGit: false`.
@@ -9,7 +9,7 @@
 // Invariants: no IO of its own (operations are injected); the landing is handed out once, with the first snapshot that
 //             actually arrives; a failed write changes nothing but the rejection the page shows.
 import { remember, replay, type FeedbackCache, type FeedbackCaps } from '@/features/feedback/cache';
-import { feedbackContextRefSchema, type FeedbackAnswer, type FeedbackAnswerRequest, type FeedbackPick, type FeedbackSnapshot } from '@/contracts/host-v3';
+import { feedbackContextRefSchema, type FeedbackAnswer, type FeedbackAnswerRequest, type FeedbackPick, type FeedbackSnapshot, type FeedbackThumbnails } from '@/contracts/host-v3';
 
 export interface FeedbackOps {
   snapshot(thread: string, query: string): Promise<FeedbackSnapshot>;
@@ -17,6 +17,8 @@ export interface FeedbackOps {
   end(askId: string): Promise<void>;
   /** The answer form's file / Skill picker; present only when the Host advertises `capabilities.feedbackContext`. */
   pick?(thread: string, kind: 'files' | 'skills', query: string): Promise<FeedbackPick['items']>;
+  /** The small JPEGs of an answered Ask's attached images; present only when the Host advertises `capabilities.feedbackManage`. */
+  thumbnails?(askId: string): Promise<FeedbackThumbnails['thumbnails']>;
   /** Present only when the Host advertises `capabilities.feedbackManage`; without it the page hides every management control. */
   manage?: {
     deleteThreads(ids: string[]): Promise<number>;
@@ -135,6 +137,11 @@ export function createFeedbackController(ops: FeedbackOps, scheme: () => 'light'
             if (!ops.pick) throw new Error('This Mac does not offer the file picker to the phone.');
             if (typeof thread !== 'string' || (kind !== 'files' && kind !== 'skills') || typeof query !== 'string') throw new Error('Bad request.');
             return ops.pick(thread, kind, query);
+          }
+          case 'feedback.Thumbnails': {
+            // No thumbnails (an older Host, a failed read) is no tiles, not an error: the page keeps its image count.
+            if (!ops.thumbnails || typeof args[0] !== 'string') return [];
+            return ops.thumbnails(args[0]).catch(() => []);
           }
           case 'feedback.DeleteThreads': {
             const ids = args[0];

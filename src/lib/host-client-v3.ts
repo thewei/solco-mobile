@@ -48,6 +48,7 @@ import {
   automationsSchema,
   feedbackAnswerRequestSchema,
   feedbackPickSchema,
+  feedbackThumbnailsSchema,
   feedbackCleanupRequestSchema,
   feedbackCleanupResultSchema,
   feedbackDeleteRequestSchema,
@@ -56,6 +57,7 @@ import {
   feedbackSnapshotSchema,
   type FeedbackAnswerRequest,
   type FeedbackPick,
+  type FeedbackThumbnails,
   type FeedbackSnapshot,
   automationDetailSchema,
   automationWriteSchema,
@@ -536,6 +538,8 @@ export interface HostClientV3 {
   feedbackAnswer(askId: string, request: FeedbackAnswerRequest): Promise<void>;
   /** The answer form's file / Skill picker rows for a thread (needs `capabilities.feedbackContext`). */
   feedbackPick(thread: string, kind: 'files' | 'skills', query: string): Promise<FeedbackPick['items']>;
+  /** The small JPEGs of an answered Ask's attached images (needs `capabilities.feedbackManage`; an older Host: 404). */
+  feedbackThumbnails(askId: string): Promise<FeedbackThumbnails['thumbnails']>;
   /** Close an Ask without an answer. */
   feedbackEnd(askId: string): Promise<void>;
   /** Inbox management (needs `capabilities.feedbackManage`): delete finished threads (resolves with how many went; a waiting one is kept). */
@@ -955,6 +959,7 @@ export function createHostClientV3(transport: PinnedTransport | null, connection
     feedbackAnswer: (askId, request) => post(`/feedback/asks/${q(askId)}/answer`, JSON.stringify(feedbackAnswerRequestSchema.parse(request)), 'feedback'),
     feedbackPick: async (thread, kind, query) =>
       (await get(`/feedback/context?thread=${q(thread)}&kind=${kind}&q=${q(query)}`, feedbackPickSchema, 'feedback')).items,
+    feedbackThumbnails: async (askId) => (await get(`/feedback/asks/${q(askId)}/thumbnails`, feedbackThumbnailsSchema, 'feedback')).thumbnails,
     feedbackEnd: (askId) => post(`/feedback/asks/${q(askId)}/end`, null, 'feedback'),
     feedbackDelete: async (ids) =>
       (await slowPostJson('/feedback/threads/delete', JSON.stringify(feedbackDeleteRequestSchema.parse({ ids })), feedbackDeleteResultSchema, 'feedback')).deleted,

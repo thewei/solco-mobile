@@ -78,4 +78,5 @@ export const iconRegistry = {
   'chat.shield': { tabler: 'shield', filled: true },
   'chat.image': { tabler: 'photo', filled: true },
   'chat.help': { tabler: 'help-circle', filled: true },
+  'act.notify': { tabler: 'bell', filled: false },
 } as const;

@@ -71,6 +71,7 @@ export default function FeedbackScreen() {
           await client.feedbackEnd(askId);
           void queryClient.invalidateQueries({ queryKey: ['v3', 'feedback'] });
         },
+        thumbnails: manageable ? (askId) => client.feedbackThumbnails(askId) : undefined,
         pick: pickable ? (thread, kind, query) => client.feedbackPick(thread, kind, query) : undefined,
         manage: manageable
           ? {
