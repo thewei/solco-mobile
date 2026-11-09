@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
-import { describeRouteChange, nextP2PDelayMs, p2pAfterTrouble, p2pBeatsRelay, P2P_SLACK_MS, P2P_STABLE_MS, withTimeout } from '@/lib/route-optimizer';
+import {
+  describeRouteChange,
+  isOffLan,
+  nextP2PDelayMs,
+  p2pAfterTrouble,
+  p2pBeatsRelay,
+  routeKeyOf,
+  P2P_SLACK_MS,
+  P2P_STABLE_MS,
+  withTimeout,
+  type RouteLabel,
+} from '@/lib/route-optimizer';
 
 describe('nextP2PDelayMs', () => {
   it('starts at 15 s, doubles, caps at 5 min', () => {
@@ -51,5 +62,58 @@ describe('withTimeout', () => {
   it('passes a result through and rejects a stall', async () => {
     await expect(withTimeout(Promise.resolve(7), 50)).resolves.toBe(7);
     await expect(withTimeout(new Promise(() => undefined), 20)).rejects.toThrow('timed out');
+  });
+});
+
+describe('isOffLan', () => {
+  it('treats direct LAN as local (offLan=false)', () => {
+    const route: RouteLabel = { route: 'direct', via: 'LAN', address: '192.168.1.5' };
+    expect(isOffLan(route)).toBe(false);
+  });
+
+  it('treats direct Tailscale IP as local direct (offLan=false)', () => {
+    const route: RouteLabel = { route: 'direct', via: 'Tailscale', address: '100.101.102.1' };
+    expect(isOffLan(route)).toBe(false);
+  });
+
+  it('treats direct USB as local direct (offLan=false)', () => {
+    const route: RouteLabel = { route: 'direct', via: 'USB', address: '127.0.0.1' };
+    expect(isOffLan(route)).toBe(false);
+  });
+
+  it('treats tailcat tunnel as off-LAN (offLan=true) so WebRTC gathers STUN/TURN', () => {
+    expect(isOffLan({ route: 'tailcat' })).toBe(true);
+  });
+
+  it('treats relay as off-LAN (offLan=true)', () => {
+    expect(isOffLan({ route: 'relay' })).toBe(true);
+  });
+
+  it('treats p2p as off-LAN (offLan=true)', () => {
+    expect(isOffLan({ route: 'p2p' })).toBe(true);
+  });
+
+  it('falls back to connection fields when route is null/undefined', () => {
+    expect(isOffLan(null, { host: '192.168.1.5' })).toBe(false);
+    expect(isOffLan(null, { host: '192.168.1.5', tailcat: 'tcaddr' })).toBe(true);
+    expect(isOffLan(null, { host: '192.168.1.5', relay: { url: 'https://relay.test' } })).toBe(true);
+    expect(isOffLan(null, null, true)).toBe(true);
+  });
+});
+
+describe('routeKeyOf', () => {
+  it('distinguishes between LAN, Tailscale, Tailcat, and Relay', () => {
+    expect(routeKeyOf({ route: 'direct', via: 'LAN', address: '192.168.1.5' })).toBe('direct:LAN:192.168.1.5');
+    expect(routeKeyOf({ route: 'direct', via: 'Tailscale', address: '100.101.102.1' })).toBe('direct:Tailscale:100.101.102.1');
+    expect(routeKeyOf({ route: 'tailcat' })).toBe('tailcat');
+    expect(routeKeyOf({ route: 'relay' })).toBe('relay');
+    expect(routeKeyOf({ route: 'p2p' })).toBe('p2p');
+  });
+
+  it('falls back to connection fields when route is missing', () => {
+    expect(routeKeyOf(null, { host: '192.168.1.5' })).toBe('direct|192.168.1.5');
+    expect(routeKeyOf(null, { host: '192.168.1.5', tailcat: 'tcaddr' })).toBe('tailcat|192.168.1.5');
+    expect(routeKeyOf(null, { host: '192.168.1.5', relay: { url: 'https://relay.test' } })).toBe('relay|192.168.1.5');
+    expect(routeKeyOf(null, null)).toBe('');
   });
 });

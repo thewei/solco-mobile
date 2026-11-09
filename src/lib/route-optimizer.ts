@@ -1,6 +1,6 @@
 // [INPUT]: nothing but numbers and route labels — no sockets, timers or storage.
 // [OUTPUT]: nextP2PDelayMs (the P2P retry ladder), p2pBeatsRelay (keep a new link only if it is not slower), describeRouteChange (the one-line wording of a
-//           switch) and withTimeout.
+//           switch), isOffLan, routeKeyOf and withTimeout.
 // [POS]: Small pure helpers around route changes. Which route serves and when to look again is
 //        lib/connection-manager.ts; this file keeps the P2P ladder, the toast wording and the probe
 //        timeout wrapper.
@@ -72,6 +72,34 @@ export function describeRouteChange(from: RouteLabel, to: RouteLabel, ms?: numbe
   const target = to.route === 'direct' && to.address ? `${routeName(to)} (${to.address})` : routeName(to);
   if (from.route === 'relay' || from.route === 'tailcat') return `Back on ${target}${latency}`;
   return `Switched to ${target}${latency}`;
+}
+
+/**
+ * Judge whether a connection route is off-LAN (cellular / internet / tunnel / relay / p2p), where STUN/TURN
+ * ICE candidates must be gathered for WebRTC, or local direct (LAN, Tailscale IP, USB) where host candidates
+ * connect immediately without waiting.
+ */
+export function isOffLan(
+  route: RouteLabel | null | undefined,
+  connection?: { host?: string; relay?: unknown; tailcat?: unknown } | null,
+  p2pActive = false,
+): boolean {
+  if (route) {
+    const isDirectLocal = route.route === 'direct' && (route.via === 'LAN' || route.via === 'Tailscale' || route.via === 'USB');
+    return !isDirectLocal;
+  }
+  return Boolean(connection?.relay) || Boolean(connection?.tailcat) || p2pActive;
+}
+
+export function routeKeyOf(
+  route: RouteLabel | null | undefined,
+  connection?: { host?: string; relay?: unknown; tailcat?: unknown } | null,
+): string {
+  if (route) {
+    return route.route === 'direct' ? `direct:${route.via}:${route.address}` : route.route;
+  }
+  if (!connection) return '';
+  return `${connection.relay ? 'relay' : connection.tailcat ? 'tailcat' : 'direct'}|${connection.host ?? ''}`;
 }
 
 /** Reject after `ms` so a stalled handshake cannot park a probe forever. */

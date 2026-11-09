@@ -5,7 +5,7 @@
 //        cellular took over), the app left or returned, a v3 request failed on the way in, or answered.
 //        All of it is a signal — what to do about it (race every route, take the fastest, rebuild the sockets,
 //        keep looking for a direct path while on the relay) is the manager's, not this file's. Also keeps the
-//        P2P overlay's own retry ladder (15 s → 5 min while on the relay and in the foreground).
+//        P2P overlay's own retry ladder (15 s → 5 min while on relay/tunnel and in the foreground).
 // [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
@@ -16,9 +16,9 @@ import { useHostV3 } from '@/lib/host-v3-provider';
 import { nextP2PDelayMs } from '@/lib/route-optimizer';
 
 export function useConnectionHealth(): void {
-  const { activeId, connection, signal, connectP2P, p2pActive } = useHostV3();
+  const { activeId, connection, signal, connectP2P, p2pActive, route } = useHostV3();
   const queryClient = useQueryClient();
-  const onRelay = Boolean(connection?.relay);
+  const onFallback = route ? (route.route === 'relay' || route.route === 'tailcat') : (Boolean(connection?.relay) || Boolean(connection?.tailcat));
   const p2p = useRef(connectP2P);
   p2p.current = connectP2P;
 
@@ -54,10 +54,10 @@ export function useConnectionHealth(): void {
     [queryClient, signal],
   );
 
-  // Reached through the relay with no P2P link yet: try to open one at once (then on its own ladder).
-  // the fastest answering route serves (direct keeps a small bias; P2P is kept only when it answers as fast as the relay), so this runs beside the manager's race, never instead of it.
+  // Reached through the relay or tunnel with no P2P link yet: try to open one at once (then on its own ladder).
+  // the fastest answering route serves (direct keeps a small bias; P2P is kept only when it answers as fast as the fallback), so this runs beside the manager's race, never instead of it.
   useEffect(() => {
-    if (Platform.OS === 'web' || !activeId || !onRelay || p2pActive) return undefined;
+    if (Platform.OS === 'web' || !activeId || !onFallback || p2pActive) return undefined;
     let stopped = false;
     let misses = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -89,5 +89,5 @@ export function useConnectionHealth(): void {
       clearTimeout(timer);
       appSub.remove();
     };
-  }, [activeId, onRelay, p2pActive]);
+  }, [activeId, onFallback, p2pActive]);
 }

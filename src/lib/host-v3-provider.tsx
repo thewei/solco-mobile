@@ -1,7 +1,7 @@
 // [INPUT]: the stored HostBookV3 (every paired Mac), the native PinnedTransport (route=lan) and
 //          user actions.
 // [OUTPUT]: HostV3Provider + useHostV3 → { status, connection, client, hosts, activeId, pair,
-//           switchTo, remove, probe, signal, markConnected, noteNet, pinnedAvailable }.
+//           switchTo, remove, probe, signal, markConnected, noteNet, pinnedAvailable, p2pActive, route }.
 // [POS]: Lifecycle owner of the paired Go Hosts: loads the book from SecureStore, trades a pairing code
 //        for a device token (a Mac paired again merges into its card), switches the active Mac, drops
 //        one on remove or on a revoked token (nothing else is switched to silently), and stamps a Mac
@@ -93,6 +93,8 @@ interface HostV3ContextValue {
   signal(signal: Signal): void;
   /** True while the active Mac is served over a WebRTC DataChannel (above the relay, below a direct address). */
   p2pActive: boolean;
+  /** Current active route label (direct with via, relay, tailcat, or p2p). */
+  route: RouteLabel | null;
   /**
    * Reached through the relay: try to open a P2P link through it (needs the Mac's `capabilities.p2p`
    * and the native WebRTC module). Failure leaves the relay in place; a Mac without P2P is not asked
@@ -508,21 +510,27 @@ export function HostV3Provider({ children }: PropsWithChildren) {
     async (id: string) => {
       await ensureLoaded();
       const target = bookRef.current.hosts.find((host) => hostId(host) === id);
-      if (!target || !createPeer || !target.relay || target.lastRoute !== 'relay') return 'skip' as const;
+      if (!target || !createPeer) return 'skip' as const;
+      const isRelayed = (target.relay && target.lastRoute === 'relay') || (target.tailcat && target.lastRoute === 'tailcat');
+      if (!isRelayed) return 'skip' as const;
       if (bookRef.current.activeId !== id || p2pRef.current?.id === id || connectingP2P.current) return 'skip' as const;
       const hold = p2pHold.current.get(id);
       if (hold !== undefined && Date.now() < hold) return 'skip' as const;
       connectingP2P.current = true;
       const startedAt = Date.now();
       try {
-        // Signalling rides the route that already works (the relay), authenticated by the device token.
-        const route = await openP2PRoute(createHostClientV3(transport, toConnection(target)), createPeer);
+        // Signalling rides the route that already works (relay or tailcat), authenticated by the device token.
+        const activeVia = target.tailcat && target.lastRoute === 'tailcat' ? 'tailcat' : 'relay';
+        const signallingTransport = activeVia === 'tailcat' ? tunnelTransport : transport;
+        if (!signallingTransport && activeVia === 'tailcat') return 'skip' as const;
+        const targetConn = toConnection(target);
+        const route = await openP2PRoute(createHostClientV3(signallingTransport, targetConn), createPeer);
         const current = bookRef.current.hosts.find((host) => hostId(host) === id);
-        if (bookRef.current.activeId !== id || current?.lastRoute !== 'relay') {
+        if (bookRef.current.activeId !== id || (current?.lastRoute !== 'relay' && current?.lastRoute !== 'tailcat')) {
           route.close(); // the Mac moved to a direct address while P2P was connecting
           return 'skip' as const;
         }
-        // The path is only worth having if it answers as fast as the relay it would replace.
+        // The path is only worth having if it answers as fast as the fallback it would replace.
         const sample = async (client: HostClientV3, tries: number) => {
           let best = Infinity;
           for (let i = 0; i < tries; i += 1) {
@@ -533,10 +541,13 @@ export function HostV3Provider({ children }: PropsWithChildren) {
           return best;
         };
         try {
-          const connection = { ...toConnection(current), relay: current.relay };
-          const [viaP2P, viaRelay] = [await sample(createHostClientV3(transport, connection, route), 3), await sample(createHostClientV3(transport, connection), 2)];
-          console.log(`[p2p] rtt p2p=${viaP2P}ms relay=${viaRelay}ms keep=${p2pBeatsRelay(viaP2P, viaRelay)}`);
-          if (!p2pBeatsRelay(viaP2P, viaRelay)) {
+          const fallbackClient = createHostClientV3(signallingTransport, targetConn);
+          const [viaP2P, viaFallback] = [
+            await sample(createHostClientV3(transport, targetConn, route), 3),
+            await sample(fallbackClient, 2),
+          ];
+          console.log(`[p2p] rtt p2p=${viaP2P}ms ${activeVia}=${viaFallback}ms keep=${p2pBeatsRelay(viaP2P, viaFallback)}`);
+          if (!p2pBeatsRelay(viaP2P, viaFallback)) {
             route.close();
             p2pHold.current.set(id, Date.now() + P2P_SLOWER_HOLD_MS);
             return 'skip' as const;
@@ -549,11 +560,11 @@ export function HostV3Provider({ children }: PropsWithChildren) {
         route.onClose(() => {
           if (p2pRef.current?.route !== route) return;
           leaveP2PAfterTrouble();
-          useRouteNotice.getState().post('P2P link lost — back on the relay');
+          useRouteNotice.getState().post(`P2P link lost — back on ${activeVia === 'tailcat' ? 'the tunnel' : 'the relay'}`);
           void queryClient.invalidateQueries({ queryKey: ['v3'] });
         });
         setP2P({ id, route, openedAt: Date.now() });
-        const text = describeRouteChange({ route: 'relay' }, { route: 'p2p' }, Date.now() - startedAt);
+        const text = describeRouteChange({ route: activeVia }, { route: 'p2p' }, Date.now() - startedAt);
         if (text) useRouteNotice.getState().post(text);
         void queryClient.invalidateQueries({ queryKey: ['v3'] });
         return 'connected' as const;
@@ -567,17 +578,17 @@ export function HostV3Provider({ children }: PropsWithChildren) {
         connectingP2P.current = false;
       }
     },
-    [ensureLoaded, createPeer, transport, queryClient, leaveP2PAfterTrouble],
+    [ensureLoaded, createPeer, transport, tunnelTransport, queryClient, leaveP2PAfterTrouble],
   );
 
-  // The overlay lives only while it is the best route: gone when the Mac leaves the relay (a direct
+  // The overlay lives only while it is the best route: gone when the Mac leaves the relay/tunnel (a direct
   // address answered) or another Mac becomes active. A quiet close — the switch was announced already.
   useEffect(() => {
-    if (p2p && (p2p.id !== book.activeId || !connection?.relay)) {
+    if (p2p && (p2p.id !== book.activeId || (!connection?.relay && record?.lastRoute !== 'tailcat'))) {
       p2p.route.close();
       setP2P(null);
     }
-  }, [p2p, book.activeId, connection]);
+  }, [p2p, book.activeId, connection, record?.lastRoute]);
 
   // The active Mac moved to another address or switched between direct and relay (same
   // certificate): what was cached came from the old way in.
@@ -599,9 +610,14 @@ export function HostV3Provider({ children }: PropsWithChildren) {
 
   const hosts = useMemo(() => sortedHosts(book), [book]);
   const status: HostV3Status = !loaded ? 'loading' : book.activeId ? 'paired' : 'unpaired';
+  const currentRoute: RouteLabel | null = useMemo(() => {
+    if (!record) return null;
+    if (p2pRoute) return { route: 'p2p' };
+    return routeOf(record);
+  }, [record, p2pRoute]);
   const value = useMemo<HostV3ContextValue>(
-    () => ({ status, connection, client, hosts, activeId: book.activeId, pinnedAvailable: transport !== null, pair, switchTo, remove, probe, signal, p2pActive: p2pRoute !== undefined, connectP2P, markConnected, noteNet }),
-    [status, connection, client, hosts, book.activeId, transport, pair, switchTo, remove, probe, signal, p2pRoute, connectP2P, markConnected, noteNet],
+    () => ({ status, connection, client, hosts, activeId: book.activeId, pinnedAvailable: transport !== null, pair, switchTo, remove, probe, signal, p2pActive: p2pRoute !== undefined, route: currentRoute, connectP2P, markConnected, noteNet }),
+    [status, connection, client, hosts, book.activeId, transport, pair, switchTo, remove, probe, signal, p2pRoute, currentRoute, connectP2P, markConnected, noteNet],
   );
   return <HostV3Context.Provider value={value}>{children}</HostV3Context.Provider>;
 }

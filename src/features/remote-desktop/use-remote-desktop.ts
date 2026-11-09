@@ -13,13 +13,14 @@ import { AppState, Platform } from 'react-native';
 
 import type { RdMode, RdTier } from '@/contracts/host-v3';
 import { useHostV3 } from '@/lib/host-v3-provider';
+import { isOffLan, routeKeyOf } from '@/lib/route-optimizer';
 import { getRdPeerFactory } from '@/lib/rd-native';
 import { createIceSource } from './ice-source';
 import { RdSession } from './session';
 
 export function useRemoteDesktop() {
-  const { client, connection, p2pActive } = useHostV3();
-  const offLan = Boolean(connection?.relay) || p2pActive;
+  const { client, connection, p2pActive, route } = useHostV3();
+  const offLan = isOffLan(route, connection, p2pActive);
   const ref = useRef({ client, offLan });
   ref.current = { client, offLan };
   // One cache per screen: primed while the link is healthy, read when it dies (see ice-source.ts).
@@ -49,9 +50,9 @@ export function useRemoteDesktop() {
   // Leaving the screen ends the session; the Mac releases everything it held either way.
   useEffect(() => () => session.end(), [session]);
 
-  // The connection manager moved the Mac to another way in (LAN → relay after a Wi-Fi → cellular switch): an
+  // The connection manager moved the Mac to another way in (LAN → relay/tunnel after a Wi-Fi → cellular switch): an
   // attempt still waiting on the old way is replaced. P2P overlays do not count (they swap `client`, not `connection`).
-  const routeKey = connection ? `${connection.relay ? 'relay' : 'direct'}|${connection.host}` : '';
+  const routeKey = routeKeyOf(route, connection);
   useEffect(() => session.routeChanged(), [routeKey, session]);
 
   // The phone's network changed or the app came back: a live link is probed, a reconnect skips its wait.
